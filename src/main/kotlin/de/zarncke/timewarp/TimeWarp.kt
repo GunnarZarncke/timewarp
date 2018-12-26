@@ -32,7 +32,7 @@ class TimeWarp {
         fun observedAddedVelocity(v: Vector3, uPrime: Vector3): Vector3 {
             // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
             val vAbs = v.abs()
-            if(vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
+            if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
             val a = uPrime.dot(v)
             val gamma_v = gamma(vAbs)
             return (uPrime * (1.0 / gamma_v) + v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 + a))
@@ -50,10 +50,26 @@ class TimeWarp {
         fun transformedAddedVelocity(v: Vector3, u: Vector3): Vector3 {
             // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
             val vAbs = v.abs()
-            if(vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
+            if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
             val a = u.dot(v)
             val gamma_v = gamma(v.abs())
             return (u * (1.0 / gamma_v) - v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 - a))
+        }
+
+        /**
+         * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
+         * @param v as velocity of a second frame S′, as measured in S
+         * @param r as 4-vector of an event within a Lorentz frame S (aka Space)
+         * @return r' as the transformed 4-vector of the event within the second frame.
+         */
+        fun lorentzTransform(v: Vector3, r: Vector4): Vector4 {
+            val vAbs = v.abs()
+            if (vAbs == 0.0) return r
+            val n = v * (1 / vAbs)
+            val r3 = r.to3()
+            val a = r.t - vAbs * n.dot(r3)
+            val gamma = gamma(vAbs)
+            return Vector4(gamma*a, r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs))
         }
     }
 
@@ -171,6 +187,7 @@ data class Vector3(val x: Double, val y: Double, val z: Double) {
 
 data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {
     fun to3() = Vector3(x, y, z)
-    //operator fun times(d: Double): Vector4 = Vector4(t*d, x*d,y*d,z*d)
+
+    constructor(t: Double, v3: Vector3) : this(t, v3.x, v3.y, v3.z)
 }
 
