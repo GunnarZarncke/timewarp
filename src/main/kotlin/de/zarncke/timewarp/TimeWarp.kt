@@ -1,9 +1,11 @@
 package de.zarncke.timewarp
 
-import koma.mat
 import java.lang.IllegalArgumentException
 import java.util.*
+import kotlin.math.cosh
+import kotlin.math.sinh
 import kotlin.math.sqrt
+import kotlin.math.tanh
 
 /**
  * Relativistic simulation.
@@ -43,14 +45,14 @@ class TimeWarp {
          * and u′ as the transformed velocity of the body within the second frame.
          * https://en.wikipedia.org/wiki/Velocity-addition_formula
          * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
-         * @param u as velocity of a body within a Lorentz frame S (aka Space)
+         * @param u as velocity of a body within a Lorentz frame S (aka Frame)
          * @param v as velocity of a second frame S′, as measured in S
          * @return u' as the transformed velocity of the body within the second frame.
          */
         fun transformedAddedVelocity(v: Vector3, u: Vector3): Vector3 {
             // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
             val vAbs = v.abs()
-            if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
+            if (vAbs == 1.0) throw IllegalArgumentException("frames cannot move with lightspeed")
             val a = u.dot(v)
             val gamma_v = gamma(v.abs())
             return (u * (1.0 / gamma_v) - v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 - a))
@@ -59,7 +61,7 @@ class TimeWarp {
         /**
          * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
          * @param v as velocity of a second frame S′, as measured in S
-         * @param r as 4-vector of an event within a Lorentz frame S (aka Space)
+         * @param r as 4-vector of an event within a Lorentz frame S (aka Frame)
          * @return r' as the transformed 4-vector of the event within the second frame.
          */
         fun lorentzTransform(v: Vector3, r: Vector4): Vector4 {
@@ -67,62 +69,81 @@ class TimeWarp {
             if (vAbs == 0.0) return r
             val n = v * (1 / vAbs)
             val r3 = r.to3()
-            val a = r.t - vAbs * n.dot(r3)
             val gamma = gamma(vAbs)
-            return Vector4(gamma*a, r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs))
+            return Vector4(
+                gamma * (r.t - vAbs * n.dot(r3)),
+                r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs)
+            )
+        }
+
+        /**
+         * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
+         * http://math.ucr.edu/home/baez/physics/Relativity/SR/Rocket/rocket.html
+         * @param a0 proper acceleration in (momentarily co-moving) reference frame
+         * @param tau proper time duration of the acceleration of the accelerated object
+         * @return 4-vector of the resulting position within the original reference frame x
+         *  velocity at proper time tau within the original reference frame
+         */
+        fun relativisticAcceleration(a0: Vector3, tau: Double): Pair<Vector4, Vector3> {
+            val aAbs = a0.abs()
+            if (aAbs == 0.0) return V3_0.to4(tau) to V3_0
+            val n = a0 * (1 / aAbs)
+            return Vector4(sinh(aAbs * tau) / aAbs, n * ((cosh(aAbs * tau) - 1) / aAbs)) to
+                    n * tanh(aAbs * tau)
         }
     }
 
+    class World {
+        var origin = Frame(V4_0, V3_0)
 
-    private var origin = Space(V4_0, V3_0)
+        val frame: Frame
+            get() = origin
 
-    val space: Space
-        get() = origin
+        var now: Double = 0.0
 
-    var now: Double = 0.0
+        val objects: MutableList<Obj> = mutableListOf()
+        fun addObj(obj: Obj) {
+            objects.add(obj)
+        }
+    }
 
-    val objects: MutableList<Obj> = mutableListOf()
-
+    val world = World()
     val formula = Formula()
 
     fun init() {
-        addObj(Obj(origin))
+        world.addObj(Obj(world.origin))
     }
 
-    fun addObj(obj: Obj) {
-        objects.add(obj)
-    }
 
     fun simulateTo(t: Double) {
-        val allLater = objects.map { obj -> obj.actions.map { it.t to (obj to it) } }.flatten().toMap().toSortedMap()
-            .subMap(now, t)
+        val allLater =
+            world.objects.map { obj -> obj.actions.map { it.t to (obj to it) } }.flatten().toMap().toSortedMap()
+                .subMap(world.now, t)
         allLater.values.forEach { (obj, action) -> action.act(obj, t) }
 
-        now = t
+        world.now = t
     }
 
-    fun position(obj: Obj): Vector4 {
-        return obj.pos.to4(now)
-    }
-
-    class Space(val displacement: Vector4, val velocity: Vector3) {
+    class Frame(val displacement: Vector4, val velocity: Vector3) {
 
     }
 
     class Obj {
-        var space: Space
-        var clock: Clock
-        var pos: Vector3 = V3_0
+        var frame: Frame
+        var position: Vector4 = V4_0
 
         val actions: TreeSet<Action> = TreeSet()
 
-        constructor(space: Space) {
-            this.space = space
-            clock = Clock(space)
+        constructor(frame: Frame) {
+            this.frame = frame
         }
 
         fun addAction(action: Action) {
             actions.add(action)
+        }
+
+        fun positionInFrame(s: Frame): Vector4 {
+            return frame.displacement - s.displacement + lorentzTransform(s.velocity, position)
         }
     }
 
@@ -133,15 +154,19 @@ class TimeWarp {
 
     class Motion(t: Double, val to: Vector4) : Action(t) {
         override fun act(obj: Obj, at: Double) {
-            obj.pos = to.to3() * (at - t)
+            obj.position = (to.to3() * (at - t)).to4(at)
         }
     }
 
-    class Clock(val space: Space)
+    class Clock(val frame: Frame, var tau: Double)
 
-    class Event
+    class Event(val clock: Clock, frame: Frame)
 
     class Sender
+
+    interface Actor {
+        fun onEvent(e: Event)
+    }
 
     class Formula {
 
@@ -177,9 +202,9 @@ class TimeWarp {
 
 data class Vector3(val x: Double, val y: Double, val z: Double) {
     fun to4(t: Double) = Vector4(t, x, y, z)
-    operator fun times(d: Double): Vector3 = Vector3(x * d, y * d, z * d)
-    operator fun plus(v2: Vector3): Vector3 = Vector3(x + v2.x, y + v2.y, z + v2.y)
-    operator fun minus(v2: Vector3): Vector3 = Vector3(x - v2.x, y - v2.y, z - v2.y)
+    operator fun times(d: Double) = Vector3(x * d, y * d, z * d)
+    operator fun plus(v2: Vector3) = Vector3(x + v2.x, y + v2.y, z + v2.y)
+    operator fun minus(v2: Vector3) = Vector3(x - v2.x, y - v2.y, z - v2.y)
     fun abs() = sqrt(x * x + y * y + z * z)
     fun dot(d: Vector3) = x * d.x + y * d.y + z * d.z
     fun cross(d: Vector3) = Vector3(y * d.z - z * d.y, z * d.x - x * d.z, x * d.y - y * d.x)
@@ -187,6 +212,8 @@ data class Vector3(val x: Double, val y: Double, val z: Double) {
 
 data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {
     fun to3() = Vector3(x, y, z)
+    operator fun plus(v2: Vector4) = Vector4(t + v2.t, x + v2.x, y + v2.y, z + v2.y)
+    operator fun minus(v2: Vector4) = Vector4(t + v2.t, x + v2.x, y + v2.y, z + v2.y)
 
     constructor(t: Double, v3: Vector3) : this(t, v3.x, v3.y, v3.z)
 }
