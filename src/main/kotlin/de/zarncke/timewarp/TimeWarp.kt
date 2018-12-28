@@ -19,78 +19,6 @@ class TimeWarp {
         val V3_0 = Vector3(0.0, 0.0, 0.0)
         val V4_0 = Vector4(0.0, 0.0, 0.0, 0.0)
 
-        fun gamma2(v: Double) = 1 / sqrt(1 - v)
-        fun gamma(v: Double) = gamma2(v * v)
-
-        /**
-         * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
-         * and u′ as the transformed velocity of the body within the second frame.
-         * https://en.wikipedia.org/wiki/Velocity-addition_formula
-         * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
-         * @param v as velocity of a second frame S′, as measured in S
-         * @param u' as the velocity of the body within the second frame.
-         * @return u as the \[observed] velocity of a body within a Lorentz frame S
-         */
-        fun observedAddedVelocity(v: Vector3, uPrime: Vector3): Vector3 {
-            // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
-            val vAbs = v.abs()
-            if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
-            val a = uPrime.dot(v)
-            val gamma_v = gamma(vAbs)
-            return (uPrime * (1.0 / gamma_v) + v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 + a))
-        }
-
-        /**
-         * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
-         * and u′ as the transformed velocity of the body within the second frame.
-         * https://en.wikipedia.org/wiki/Velocity-addition_formula
-         * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
-         * @param u as velocity of a body within a Lorentz frame S (aka Frame)
-         * @param v as velocity of a second frame S′, as measured in S
-         * @return u' as the transformed velocity of the body within the second frame.
-         */
-        fun transformedAddedVelocity(v: Vector3, u: Vector3): Vector3 {
-            // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
-            val vAbs = v.abs()
-            if (vAbs == 1.0) throw IllegalArgumentException("frames cannot move with lightspeed")
-            val a = u.dot(v)
-            val gamma_v = gamma(v.abs())
-            return (u * (1.0 / gamma_v) - v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 - a))
-        }
-
-        /**
-         * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
-         * @param v as velocity of a second frame S′, as measured in S
-         * @param r as 4-vector of an event within a Lorentz frame S (aka Frame)
-         * @return r' as the transformed 4-vector of the event within the second frame.
-         */
-        fun lorentzTransform(v: Vector3, r: Vector4): Vector4 {
-            val vAbs = v.abs()
-            if (vAbs == 0.0) return r
-            val n = v * (1 / vAbs)
-            val r3 = r.to3()
-            val gamma = gamma(vAbs)
-            return Vector4(
-                gamma * (r.t - vAbs * n.dot(r3)),
-                r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs)
-            )
-        }
-
-        /**
-         * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
-         * http://math.ucr.edu/home/baez/physics/Relativity/SR/Rocket/rocket.html
-         * @param a0 proper acceleration in (momentarily co-moving) reference frame
-         * @param tau proper time duration of the acceleration of the accelerated object
-         * @return 4-vector of the resulting position within the original reference frame x
-         *  velocity at proper time tau within the original reference frame
-         */
-        fun relativisticAcceleration(a0: Vector3, tau: Double): Pair<Vector4, Vector3> {
-            val aAbs = a0.abs()
-            if (aAbs == 0.0) return V3_0.to4(tau) to V3_0
-            val n = a0 * (1 / aAbs)
-            return Vector4(sinh(aAbs * tau) / aAbs, n * ((cosh(aAbs * tau) - 1) / aAbs)) to
-                    n * tanh(aAbs * tau)
-        }
     }
 
     class World {
@@ -102,6 +30,7 @@ class TimeWarp {
         var now: Double = 0.0
 
         val objects: MutableList<Obj> = mutableListOf()
+        val events: MutableList<Event> = mutableListOf()
         fun addObj(obj: Obj) {
             objects.add(obj)
         }
@@ -111,39 +40,39 @@ class TimeWarp {
     val formula = Formula()
 
     fun init() {
-        world.addObj(Obj(world.origin))
+    }
+
+    fun addObj(obj: Obj, position: Vector4) {
+        obj.position = position
+        world.addObj(obj)
     }
 
 
-    fun simulateTo(t: Double) {
+    fun simulateTo(t: Double):World {
         val allLater =
             world.objects.map { obj -> obj.actions.map { it.t to (obj to it) } }.flatten().toMap().toSortedMap()
                 .subMap(world.now, t)
         allLater.values.forEach { (obj, action) -> action.act(obj, t) }
 
         world.now = t
+        return world
     }
 
     class Frame(val displacement: Vector4, val velocity: Vector3) {
 
     }
 
-    class Obj {
-        var frame: Frame
+    class Obj(val name: String) {
         var position: Vector4 = V4_0
 
         val actions: TreeSet<Action> = TreeSet()
-
-        constructor(frame: Frame) {
-            this.frame = frame
-        }
 
         fun addAction(action: Action) {
             actions.add(action)
         }
 
         fun positionInFrame(s: Frame): Vector4 {
-            return frame.displacement - s.displacement + lorentzTransform(s.velocity, position)
+            return s.displacement + lorentzTransform(s.velocity, position)
         }
     }
 
@@ -157,15 +86,31 @@ class TimeWarp {
             obj.position = (to.to3() * (at - t)).to4(at)
         }
     }
+    class Accelerate(t: Double, val a: Vector3, val tEnd:Double) : Action(t) {
+        override fun act(obj: Obj, at: Double) {
+            // TODO
+        }
+    }
+
+    class Pulse(val name: String, start: Double, period: Double): Action(start)
 
     class Clock(val frame: Frame, var tau: Double)
 
-    class Event(val clock: Clock, frame: Frame)
-
-    class Sender
+    data class Event(
+        val name: String,
+        val position: Vector4,
+        val sender: Obj,
+        val receiver: Obj
+    )
 
     interface Actor {
-        fun onEvent(e: Event)
+        fun onEvent(e: Event, world: World, api: Api)
+    }
+
+    interface Api {
+        fun addAction(a: Action)
+        fun addPulse(name: String)
+        fun addObject(obj: Obj)
     }
 
     class Formula {
@@ -218,3 +163,80 @@ data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {
     constructor(t: Double, v3: Vector3) : this(t, v3.x, v3.y, v3.z)
 }
 
+private fun gamma2(v: Double) = 1 / sqrt(1 - v)
+/**
+ * The gamma function is the relativistic Lorentz factor.
+ * @param v velocity
+ * @return lorentzFactor
+ */
+fun gamma(v: Double) = gamma2(v * v)
+
+/**
+ * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
+ * and u′ as the transformed velocity of the body within the second frame.
+ * https://en.wikipedia.org/wiki/Velocity-addition_formula
+ * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
+ * @param v as velocity of a second frame S′, as measured in S
+ * @param u' as the velocity of the body within the second frame.
+ * @return u as the \[observed] velocity of a body within a Lorentz frame S
+ */
+fun observedAddedVelocity(v: Vector3, uPrime: Vector3): Vector3 {
+    // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
+    val vAbs = v.abs()
+    if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
+    val a = uPrime.dot(v)
+    val gamma_v = gamma(vAbs)
+    return (uPrime * (1.0 / gamma_v) + v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 + a))
+}
+
+/**
+ * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
+ * and u′ as the transformed velocity of the body within the second frame.
+ * https://en.wikipedia.org/wiki/Velocity-addition_formula
+ * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
+ * @param u as velocity of a body within a Lorentz frame S (aka Frame)
+ * @param v as velocity of a second frame S′, as measured in S
+ * @return u' as the transformed velocity of the body within the second frame.
+ */
+fun transformedAddedVelocity(v: Vector3, u: Vector3): Vector3 {
+    // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
+    val vAbs = v.abs()
+    if (vAbs == 1.0) throw IllegalArgumentException("frames cannot move with lightspeed")
+    val a = u.dot(v)
+    val gamma_v = gamma(v.abs())
+    return (u * (1.0 / gamma_v) - v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 - a))
+}
+
+/**
+ * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
+ * @param v as velocity of a second frame S′, as measured in S
+ * @param r as 4-vector of an event within a Lorentz frame S (aka Frame)
+ * @return r' as the transformed 4-vector of the event within the second frame.
+ */
+fun lorentzTransform(v: Vector3, r: Vector4): Vector4 {
+    val vAbs = v.abs()
+    if (vAbs == 0.0) return r
+    val n = v * (1 / vAbs)
+    val r3 = r.to3()
+    val gamma = gamma(vAbs)
+    return Vector4(
+        gamma * (r.t - vAbs * n.dot(r3)),
+        r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs)
+    )
+}
+
+/**
+ * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
+ * http://math.ucr.edu/home/baez/physics/Relativity/SR/Rocket/rocket.html
+ * @param a0 proper acceleration in (momentarily co-moving) reference frame
+ * @param tau proper time duration of the acceleration of the accelerated object
+ * @return 4-vector of the resulting position within the original reference frame x
+ *  velocity at proper time tau within the original reference frame
+ */
+fun relativisticAcceleration(a0: Vector3, tau: Double): Pair<Vector4, Vector3> {
+    val aAbs = a0.abs()
+    if (aAbs == 0.0) return TimeWarp.V3_0.to4(tau) to TimeWarp.V3_0
+    val n = a0 * (1 / aAbs)
+    return Vector4(sinh(aAbs * tau) / aAbs, n * ((cosh(aAbs * tau) - 1) / aAbs)) to
+            n * tanh(aAbs * tau)
+}
