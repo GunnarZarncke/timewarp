@@ -117,6 +117,6 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
     val v = aAbs * t
     val tau = ln(sqrt(1.0 + v.pow(2)) + v) / aAbs
     val n = a0 * (1 / aAbs)
-    return State(Vector4(t, n * ((sqrt(1 + v.pow(2)) - 1) / aAbs)), n * v, tau)
+    return State(Vector4(t, n * ((sqrt(1 + v.pow(2)) - 1) / aAbs)), n * tanh(aAbs * tau), tau)
 }
 

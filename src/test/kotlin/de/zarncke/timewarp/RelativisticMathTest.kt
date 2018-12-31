@@ -6,6 +6,7 @@ import kotlin.math.cosh
 import kotlin.math.sinh
 import kotlin.math.sqrt
 import kotlin.math.tanh
+import kotlin.test.assertEquals
 
 class RelativisticMathTest {
 
@@ -67,6 +68,17 @@ class RelativisticMathTest {
 
         assertEqualsV((EX * (cosh(1.0) - 1)).to4(sinh(1.0)), relativisticAcceleration(EX, 1.0).r)
         assertEqualsV(EX * tanh(1.0), relativisticAcceleration(EX, 1.0).v)
+    }
+
+    @Test
+    fun testAccelerationProperAndCoordinate() {
+        val s1 = relativisticAcceleration(EX, 1.0)
+        val s2 = relativisticCoordAcceleration(EX, s1.r.t)
+        assertEqualsS(s1, s2, "relativistic acceleration should agree between proper and coordinate time")
+
+        val s3 = relativisticCoordAcceleration(EX, 1.0)
+        val s4 = relativisticAcceleration(EX, s3.tau)
+        assertEqualsS(s3, s4, "relativistic acceleration should agree between coordinate and proper time")
     }
 
 }
