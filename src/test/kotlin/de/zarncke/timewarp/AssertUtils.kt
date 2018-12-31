@@ -14,7 +14,7 @@ fun assertEqualsV(v1: Vector3, v2: Vector3, msg:String ="3-vector different") {
 
 fun assertEqualsV(v1: Vector4, v2: Vector4, msg:String="4-vector different") {
     Assert.assertEquals("$msg: t different in $v1!=$v2", v1.t, v2.t, EPS)
-    assertEqualsV(v1.to3(), v2.to3())
+    assertEqualsV(v1.to3(), v2.to3(), msg)
 }
 
 fun assertEqualsS(s1: State, s2: State, msg:String="states different") {
