@@ -1,6 +1,7 @@
 package de.zarncke.timewarp
 
 import java.lang.IllegalArgumentException
+import java.lang.IllegalStateException
 import java.util.*
 import kotlin.Exception
 import kotlin.math.*
@@ -13,13 +14,16 @@ import kotlin.math.*
 class TimeWarp {
     // Koma: mat[1.0,1.0,1.0].T*mat[1.0,1.0,1.0]
 
+
     class World(
         var now: Double = 0.0,
         val objects: MutableList<Obj> = mutableListOf(),
+        val completeActions: MutableSet<Action> = mutableSetOf(),
+        val activeActions: MutableSet<Action> = mutableSetOf(),
         val events: MutableList<Event> = mutableListOf(),
-        val states: MutableMap<Obj, Pair<Vector4, Vector3>> = mutableMapOf()
+        val states: MutableMap<Obj, State> = mutableMapOf()
     ) {
-        var origin = Frame(V4_0, V3_0)
+        var origin = Frame.ORIGIN
 
         fun addObj(obj: Obj) {
             objects.add(obj)
@@ -27,7 +31,7 @@ class TimeWarp {
 
         fun comovingFrame(obj: Obj) =
             (states[obj] ?: throw IllegalArgumentException("unknown object $obj"))
-                .let { Frame(it.first, it.second) }
+                .let { Frame(it.r, it.v) }
 
         /**
          * @param obj to get position and velocity for (at current time t in world frame)
@@ -35,19 +39,23 @@ class TimeWarp {
          * @return state (position and velocity) in the given frame
          */
         fun stateInFrame(obj: Obj, s: Frame) =
-            (states[obj] ?: throw IllegalArgumentException("unknown object $obj")).let {
-                lorentzTransform(s.velocity, it.first - s.displacement) to
-                        transformedAddedVelocity(s.velocity, it.second)
-            }
+            (states[obj] ?: throw IllegalArgumentException("unknown object $obj")).transform(origin, s)
 
-        fun set(obj: TimeWarp.Obj, position: Vector4 = V4_0, velocity: Vector3 = V3_0) {
-            states[obj] = position to velocity
+        fun set(obj: TimeWarp.Obj, state: State) {
+            states[obj] = state
         }
 
-        fun copy() = World(now, objects.toMutableList(), events.toMutableList(), states.toMutableMap())
+        fun copy() = World(
+            now,
+            objects.toMutableList(),
+            completeActions.toMutableSet(),
+            activeActions.toMutableSet(),
+            events.toMutableList(),
+            states.toMutableMap()
+        )
     }
 
-    val world = World()
+    var world = World()
     val formula = Formula()
 
     fun init() {
@@ -55,67 +63,203 @@ class TimeWarp {
 
     fun addObj(obj: Obj, position: Vector4) {
         world.addObj(obj)
-        world.set(obj, position, V3_0)
+        world.set(obj, State(position, V3_0, 0.0))
     }
 
-
+    /**
+     * Simulate world up to time t.
+     * Determines all intermediate events of objects and calls [Obj.act] with a world updated to that time.
+     * @param t coordinate time in world frame ('origin')
+     * @return World at coordinate time t
+     */
     fun simulateTo(t: Double): World {
-        // repeat taking the next event and processing it until the target time has been reached
-        // TODO proper time of action cannot be transformed into common time -> use multiple queues (?)
-        // -> events will be chronological (causal) in any reference frame
-        // TODO inertial motion: without explicit Acceleration objects should continue moving along
-        while (true) {
+        // note: processing from any observer frame should lead to the same results
+        // while simulation target time not yet reached
+        while (world.now < t) {
             // for each object
-            //   among movements and unmarked actions not earlier than now
+            //   among unhandled actions not earlier than now
             //     determine proper time tau of first scheduled action
             //     determine all scheduled motions up to that event (might require creation of ad-hoc inertial moves)
             //     simulate all motions up to tau
             //     calculate 4-vector (in world frame) of the object at tau
             // take the earliest of these 4-vectors call it r and its object o and action a
-            // for each object
-            //   execute motion to r (see below) determining tau_o
-            //   update the object in the world to it's 4-vector
-            // execute action a on o with the world and tau_o as parameter (may update events)
-            // mark a as done
-            //
-            // execute motion of obj to r
-            //   set p = current position of obj
-            //   set t = now
-            //   while t<r.t
-            //     take motion at current time, if there is none create inertial up the next one
-            //     calculate q and tau for r.t with current motion
-            //     if tau > next motion
-            //       set p = move to tau
-            //       set t = q.t
-            //     else
-            //       return q
+            var earliestState: State? = null
+            var earliestAction: Action? = null
+            var earliestObj: Obj? = null
+            for (obj in world.objects) {
+                // among unhandled actions not earlier than now
+                val nextAction =
+                    obj.actions().filter { !world.completeActions.contains(it) && !world.activeActions.contains(it) }.firstOrNull()
+                        ?: continue
+                //  determine proper time tau of first scheduled action
+                var state = world.states[obj]!!
+                val tauAction = nextAction.tauStart
 
-            /*
-            val (start, objAct) =
-                    world.objects.map { obj ->
-                        obj.actions.map {
-                            lorentzTransformInv(
-                                world.stateInFrame(obj, world.origin),
-                                it.tau
-                            ).t to (obj to it)
-                        }
+                // determine all scheduled motions up to that event (might require creation of ad-hoc inertial moves)
+                val motions = getMotionsInRange(obj, state.tau, tauAction)
+
+                // simulate all motions up to tau
+                for (entry in motions) {
+                    val tauNext = entry.key
+                    // (create ad-hoc inertial motion if needed)
+                    if (tauNext > state.tau) {
+                        val s = Frame(state.r, state.v)
+                        state = Inertial(state.tau, tauNext)
+                            .moveUntilProperTime(obj, s, state.tau, tauNext).transform(s, world.origin)
                     }
-                        .flatten()
-                        .toMap().toSortedMap()
-                        .subMap(world.now, t).entries.firstOrNull()
-                        ?: break
-            val (obj, action) = objAct
-            action.act(world, obj, t)
-            val pos = world.stateInFrame(obj, world.origin)
-            world.events.add(Event("Action:$action", pos, obj, obj))
-            */
+
+                    val s = Frame(state.r, state.v)
+                    val tauStart = max(tauNext, state.tau)   // not sure this matches with state/frame
+                    val tauEnd = min(entry.value.tauEnd, tauAction)
+                    // calculate 4-vector (in world frame) of the object at tau
+                    state = entry.value.moveUntilProperTime(obj, s, tauStart, tauEnd).transform(s, world.origin)
+                }
+                // (we may need to create an inertial movement afterwards)
+                if (state.tau < tauAction) {
+                    val s = Frame(state.r, state.v)
+                    state = Inertial(state.tau, tauAction)
+                        .moveUntilProperTime(obj, s, state.tau, tauAction).transform(s, world.origin)
+                }
+                // take the earliest of these 4-vectors call it r and its object o and action a
+                if (earliestState == null || earliestState.r.t < state.r.t) {
+                    earliestState = state
+                    earliestAction = nextAction
+                    earliestObj = obj
+                }
+            }
+
+            if (earliestAction == null) {
+                // (no further actions; we continue motion directly to the end state)
+                for (obj in world.objects) {
+                    val state = executeMotionToCoordinateTime(world, obj, t)
+                    world.set(obj, state)
+                }
+                world.now = t
+                break;
+            }
+
+            // extra handling for reduced time steps
+            val targetTime = earliestState!!.r.t
+            var fallbackTime = world.now
+            var evaluatedTime = targetTime
+            time@
+            while (true) {
+                // create a candidate world - we might need to backtrack
+                val worldNext = world.copy()
+
+                // for each object
+                //   execute motion to r (see below) determining tau_o
+                //   update the object in the world to it's 4-vector
+                for (obj in worldNext.objects) {
+                    if (obj == earliestObj) {
+                        // for the earliest action we know the state and take a shortcut
+                        worldNext.set(obj, earliestState)
+                        continue
+                    }
+                    val state = executeMotionToCoordinateTime(worldNext, obj, evaluatedTime)
+
+                    worldNext.set(obj, state)
+                }
+
+                val changes = Action.Changes()
+                for (action in world.activeActions + earliestAction) {
+
+                    // execute action a on o with the world and tau_o as parameter (may update events)
+                    // execute all other active actions
+                    try {
+                        earliestAction.act(worldNext, earliestObj!!, earliestState.tau, changes)
+                    } catch (e: RetrySmallerStep) {
+                        // stop, we went too far ahead
+                        evaluatedTime = (fallbackTime + evaluatedTime) / 2
+                        continue@time
+                    }
+                }
+
+                // (we successfully executed all actions for the evaluated time and can update the world to it)
+                changes.applyChanges(worldNext)
+                world = worldNext
+                if (evaluatedTime == targetTime)
+                    break
+                fallbackTime = evaluatedTime
+                evaluatedTime = targetTime
+            }
+
+            // mark action a as done
+            if (earliestAction.tauEnd != earliestAction.tauStart)
+                world.activeActions.add(earliestAction)
+            else world.completeActions.add(earliestAction)
+
+            //world.events.add(Event("Action:$action", pos, obj, obj))
         }
 
         return world
     }
 
-    class Frame(val displacement: Vector4, val velocity: Vector3) {
+    private fun executeMotionToCoordinateTime(world: World, obj: Obj, evaluatedTime: Double): State {
+        // execute motion of obj to r
+        //   set p = current position of obj
+        //   set t = now
+        //   while t<r.t
+        //     take motion at current time, if there is none create inertial up the next one
+        //     calculate q and tau for r.t with current motion
+        //     if tau > next motion
+        //       set p = move to tau
+        //       set t = q.t
+        //     else
+        //       return q
+        var state = world.states[obj]!!
+        var objectCoordinateTime = world.now
+        val motions = getMotionsInRange(obj, state.tau, Double.POSITIVE_INFINITY).entries.toMutableList()
+        while (objectCoordinateTime < evaluatedTime && !motions.isEmpty()) {
+            val entry = motions.removeAt(0)
+            val tauNext = entry.key
+            // (create ad-hoc inertial motion if needed)
+            if (tauNext > state.tau) {
+                val s = Frame(state.r, state.v)
+                val transformedCoordinateTime =
+                    state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
+                state = Inertial(state.tau, tauNext)
+                    .moveUntilObserverTime(obj, s, transformedCoordinateTime)
+                    .transform(s, world.origin)
+            }
 
+            if (tauNext < state.tau) {
+                // (we need to undo motion back to its origin from where we can apply observer time)
+                val s = Frame(state.r, state.v)
+                state = entry.value.moveUntilProperTime(obj, s, state.tau, entry.key)
+                    .transform(s, world.origin)
+            }
+            val s = Frame(state.r, state.v)
+            // TODO much unused transform included here, might simplify:
+            val transformedCoordinateTime =
+                state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
+            state = entry.value.moveUntilObserverTime(obj, s, transformedCoordinateTime)
+                .transform(s, world.origin)
+            objectCoordinateTime = state.r.t
+        }
+        // (we may need to create an inertial movement afterwards)
+        if (objectCoordinateTime < evaluatedTime) {
+            val s = Frame(state.r, state.v)
+            val transformedCoordinateTime =
+                state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
+            state = Inertial(state.tau, Double.POSITIVE_INFINITY)
+                .moveUntilObserverTime(obj, s, transformedCoordinateTime)
+                .transform(s, world.origin)
+        }
+
+        if (state.r.t != evaluatedTime)
+            throw IllegalStateException()
+        return state
+    }
+
+    private fun getMotionsInRange(obj: Obj, tauStart: Double, tauEnd: Double): SortedMap<Double, Motion> {
+        val motions = obj.motions().subMap(tauStart, tauEnd).toSortedMap()
+        // (there may be an incomplete motion started earlier)
+        val prev = obj.motions().headMap(tauStart).entries.lastOrNull()
+        if (prev != null && prev.value.tauStart < tauStart && prev.value.tauEnd > tauStart) {
+            motions.put(prev.key, prev.value)
+        }
+        return motions
     }
 
     class Obj(val name: String) {
@@ -123,109 +267,154 @@ class TimeWarp {
          * There can only be one motion at a time; if no motion is specified the object continues in inertial
          * movement i.e. with the last velocity.
          */
-        val motions: TreeSet<Motion> = TreeSet()
+        private val motions: TreeMap<Double, Motion> = TreeMap()
+
 
         /**
          * Any overlapping number of actions can be specified, they just can't change the movement of the object.
          */
-        val actions: TreeSet<Action> = TreeSet()
+        private val actions: TreeSet<Action> = TreeSet()
+
+        fun motions(): SortedMap<Double, Motion> = motions
+        fun actions(): Set<Action> = actions
 
         fun addMotion(motion: Motion) {
-            motions.add(motion)
+            val overlaps = motions.subMap(motion.tauStart, motion.tauEnd)
+            if (!overlaps.isEmpty())
+                throw IllegalArgumentException("motion $motion overlaps with $overlaps")
+            val next = motions.tailMap(motion.tauEnd).values.firstOrNull()
+            if (next != null && motion.tauEnd > next.tauStart)
+                throw IllegalArgumentException("motion $motion overlaps partly with $next")
+            motions.put(motion.tauStart, motion)
         }
 
         fun addAction(action: Action) {
+            if (action.tauEnd < action.tauStart) throw IllegalArgumentException()
             actions.add(action)
         }
     }
 
     class RetrySmallerStep : Exception()
 
-    abstract class Motion(val tauStart: Double) {
+    abstract class Motion(val tauStart: Double, val tauEnd: Double) {
+
         /**
-         * Determines the location and velocity of an object at a given <em>proper time</em> tau within a co-moving reference frame.
-         * This method will be called when the proper time of the associated object is greater or equal the motion time.
-         * It may be called multiple times with different values (or even the same value) for tau.
-         * @param obj to be moved up to
-         * @param tau proper time of object in
-         * @param coMovingFrame co-moving with object at time tauStart
-         * @return 4-vector of object at proper time tau within given frame x
-         *  relative velocity at that time in the given frame
+         * Determines the location and velocity of an object at a given <em>proper time</em> tauTo within a co-moving reference frame.
+         * This method will be called when the proper time of the associated object is greater or equal the motion start time.
+         * It may be called multiple times with different values (or even the same value) for tauNow and tauTo (in corresponding reference frames).
+         * @param obj in
+         * @param coMovingFrame co-moving with object at
+         * @param tauNow proper time of object (sometime during the motion) to
+         * @param tauTo proper time of object (may be *before* tauNow, but not before tauStart)
+         * @return state (4-vector and velocity of object at proper time tau within given frame)
          */
-        abstract fun moveToProperTime(obj: Obj, tau: Double, coMovingFrame: Frame): Pair<Vector4, Vector3>
+        abstract fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State
+
+        // TODO check what happens with lateral acceleration, maybe this coMovingFrame thing is not yet well thought out
 
         /**
          * Determines the location and velocity of an object at a given <em>coordinate time</em> t within the given reference frame.
          * This method will be called to determine the location and proper time of the associated object at coordinate time.
          * @param obj at
          * @param t coordinate time of object in
-         * @param inertialFrame co-moving with object at time tauStart
-         * @return 4-vector of object at tau within given frame x
-         *   relative velocity at tau in the given frame x
-         *   time tau of the end of the motion (either corresponding to t or the end of the motion)
+         * @param coMovingFrame co-moving with object at time tauStart (!)
+         * @return state (4-vector and velocity and tau of object either at t or the end of the motion whatever is earlier)
          */
-        abstract fun moveToObserverTime(obj: Obj, t: Double, inertialFrame: Frame): Pair<Pair<Vector4, Vector3>, Double>
+        abstract fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State
     }
 
-    class Inertial(tauStart: Double, val v: Vector3, val tauEnd: Double) : Motion(tauStart) {
-        override fun moveToProperTime(obj: Obj, tau: Double, coMovingFrame: Frame): Pair<Vector4, Vector3> {
-            return (v * (tau - this.tauStart)).to4(tau) to v
+    /**
+     * Inertial motion stays at the origin of its comoving reference frame.
+     * If a velocity is specified it applies at tauStart.
+     */
+    class Inertial(tauStart: Double, tauEnd: Double, val v: Vector3 = V3_0) : Motion(tauStart, tauEnd) {
+        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+            return State((v * (tauTo - tauNow)).to4(tauTo - tauNow), v, tauNow)
         }
 
-        override fun moveToObserverTime(
-            obj: Obj,
-            t: Double,
-            inertialFrame: Frame
-        ): Pair<Pair<Vector4, Vector3>, Double> {
+        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
             // t = tau for inertial motion
             // see https://en.wikipedia.org/wiki/Proper_time
-            var dt = (t - inertialFrame.displacement.t)
+            var dt = t - coMovingFrame.r.t
             if (this.tauStart + dt > tauEnd) dt = tauEnd - tauStart
-            val p = (v * dt).to4(tauStart + dt)
-            return p to v to this.tauStart + dt
+            val p = (v * dt).to4(dt)
+            return State(p, v, this.tauStart + dt)
         }
     }
 
     /**
-     * @param tau proper time of start of acceleration
-     * @param a proper acceleration ("alpha") in momentarily co-moving reference frame
-     * @param tauEnd proper end time of motion
+     * "a) Hyperbolic motion: The constant, longitudinal proper acceleration
+     * {\alpha =a_{x}^{0}=a_{x}\gamma ^{3}} by (4a) leads to the world line..."
+     * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)#Curved_world_lines
      */
-    class Accelerate(tau: Double, val a: Vector3, val tauEnd: Double) : Motion(tau) {
-        override fun moveToProperTime(obj: Obj, tau: Double, coMovingFrame: Frame): Pair<Vector4, Vector3> {
-            return relativisticAcceleration(a, tau - this.tauStart)
+    class LongitudinalAcceleration(tauStart: Double, tauEnd: Double, val a: Vector3) : Motion(tauStart, tauEnd) {
+        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+            return relativisticAcceleration(a, tauTo - tauNow).copy(tau = tauTo)
         }
 
-        override fun moveToObserverTime(
+        override fun moveUntilObserverTime(
             obj: Obj,
-            t: Double,
-            inertialFrame: Frame
-        ): Pair<Pair<Vector4, Vector3>, Double> {
-            var dt = (t - inertialFrame.displacement.t)
-            val pvtau = relativisticCoordAcceleration(a, dt)
+            coMovingFrame: Frame,
+            t: Double
+        ): State {
+            val state = relativisticCoordAcceleration(a, t)
 
-            if (this.tauStart + pvtau.second > tauEnd) return relativisticAcceleration(a, tauEnd - tauStart) to tauEnd
-            return pvtau
+            if (this.tauStart + state.tau < tauEnd)
+                return state.copy(tau = state.tau + tauStart)
+            return relativisticAcceleration(a, tauEnd - tauStart).copy(tau = tauEnd)
         }
     }
 
-    abstract class Action(val tau: Double) {
+    abstract class Action(val tauStart: Double, val tauEnd: Double) {
+        data class Changes(
+            val actions: MutableSet<Pair<Obj, Action>> = mutableSetOf(),
+            val motions: MutableList<Pair<Obj, Motion>> = mutableListOf(),
+            val objects: MutableSet<Pair<Obj, Vector4>> = mutableSetOf(),
+            val events: MutableSet<Event> = mutableSetOf()
+        ) {
+            fun applyChanges(world: TimeWarp.World) {
+                for (entry in actions) {
+                    entry.first.addAction(entry.second)
+                }
+                for (entry in motions) {
+                    entry.first.addMotion(entry.second)
+                }
+                for (entry in objects) {
+                    world.addObj(entry.first)
+                    world.set(entry.first, State(entry.second, V3_0, 0.0))
+                }
+                world.events.addAll(events)
+            }
+        }
+
 
         /**
-         * This method will be called when the proper time of the associated object is greater or equal the given time.
-         * It may be called multiple times with different values (or even the same value) for tau.
-         * The method may do
+         * This method will be called at the proper time tauStart and tauEnd.
+         * It may also be called at other times in between (at other events at the same coordinate time).
+         * when of the associated object is greater or equal the given time.
+         * If the Action needs to narrow down on a certain time it may throw [RetrySmallerStep] which will cause
+         * time interval halving. Caution: Slow.
+         * <br/>
+         * The method may...
          * <ul>
-         *     <li>Add new actions in the future or now</li>
-         *     <li>Add new motions in the future or now (but no overlapping motions are allowed)</li>
-         *     <li>Add new objects to the world (but only in the lightcone of this object)</li>
+         *     <li>inspect the World but not change it (instead use changes)</li>
+         *     <li>return new actions in the future or now</li>
+         *     <li>return new motions in the future or now (but no overlapping motions are allowed)</li>
+         *     <li>return new objects in the lightcone of this object</li>
+         *     <li>throw [RetrySmallerStep] to indicate more detailed processing (see above)</li>
          * </ul>
          * @param world with state of all objects as seen by
          * @param obj acted on at
          * @param tau proper time of object
+         * @param changes to use
          * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
          */
-        open fun act(world: World, obj: Obj, tau: Double) {}
+        open fun act(world: World, obj: Obj, tau: Double, changes: Changes) {}
+
+        /**
+         *
+         */
+        open fun always() = false
     }
 
     /**
@@ -233,23 +422,24 @@ class TimeWarp {
      * Currently does *not* reduce time step if objects get close to another, but only detects collision at existing
      * events/simulation times.
      */
-    open class DetectCollision(tau: Double, val until: Double, val targets: Set<Obj>) : Action(tau) {
-        val generated = mutableSetOf<Obj>()
-        override fun act(world: World, self: Obj, tau: Double) {
-            val sourcePos = world.stateInFrame(self, world.origin)
-            for (obj in targets - generated) {
-                val objPos = world.stateInFrame(obj, world.origin)
-                val dr = (objPos.first.to3() - sourcePos.first.to3()).abs()
+    open class DetectCollision(tau: Double, val until: Double, val targets: Set<Obj>) :
+        Action(tau, Double.POSITIVE_INFINITY) {
+        private val generated = mutableSetOf<Obj>()
+        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
+            val sourcePos = world.stateInFrame(obj, world.origin)
+            for (target in targets - generated) {
+                val objPos = world.stateInFrame(target, world.origin)
+                val dr = (objPos.r.to3() - sourcePos.r.to3()).abs()
                 // TODO if dr is small compared to time step reduce time step
                 if (dr < eps) {
-                    collide(world, objPos, self, obj)
-                    generated.add(obj)
-                } else if (dr > eps) generated.remove(obj)
+                    collide(changes, objPos, obj, target)
+                    generated.add(target)
+                } else if (dr > eps) generated.remove(target)
             }
         }
 
-        open fun collide(world: World, objPos: Pair<Vector4, Vector3>, self: Obj, obj: Obj) {
-            world.events.add(Event("collide", objPos.first, self, obj))
+        open fun collide(changes: Changes, objPos: State, self: Obj, obj: Obj) {
+            changes.events.add(Event("collide", objPos.r, self, obj))
         }
     }
 
@@ -257,11 +447,11 @@ class TimeWarp {
      * A Sender action creates periodical [Pulse]s originating from its objects 4-vector.
      * The period is determined from object proper time.
      */
-    class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action(start) {
-        override fun act(world: World, obj: Obj, tau: Double) {
+    class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action(start, start) {
+        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
             if (tau == start) {
-                obj.actions.add(Sender(name, start + period, period, no + 1))
-                obj.actions.add(Pulse("pulse:$name-$no", start))
+                changes.actions.add(obj to Sender(name, start + period, period, no + 1))
+                changes.actions.add(obj to Pulse("pulse:$name-$no", start))
             }
         }
     }
@@ -270,18 +460,18 @@ class TimeWarp {
      * A Pulse is a single light signal that is sent at the start time (proper) in all directions and received by
      * all objects that it reaches, creating an Event at the intercept 4-vector.
      */
-    class Pulse(val name: String, start: Double) : Action(start) {
+    class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INFINITY) {
         private val generated = mutableSetOf<Obj>()
-        override fun act(world: World, obj: Obj, tau: Double) {
+        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
             // note: sourcePos.t is transformed start tau
             // and objPos.t is transformed now tau
-            val sourcePos = world.stateInFrame(obj, world.origin).first
+            val sourcePos = world.stateInFrame(obj, world.origin).r
             for (other in world.objects - generated) {
-                val objPos = world.stateInFrame(other, world.origin).first
+                val objPos = world.stateInFrame(other, world.origin).r
                 val dr = (objPos.to3() - sourcePos.to3()).abs()
                 val dt = objPos.t - sourcePos.t
                 if (abs(dr - dt) < eps) {
-                    world.events.add(Event(name, objPos, obj, other))
+                    changes.events.add(Event(name, objPos, obj, other))
                     generated.add(other)
                 } else if (dr > dt) throw RetrySmallerStep()
             }
@@ -330,141 +520,31 @@ class TimeWarp {
 // TODO move into context object?
 var eps = 0.000001
 
-val V3_0 = Vector3(0.0, 0.0, 0.0)
-val V4_0 = Vector4(0.0, 0.0, 0.0, 0.0)
-
-data class Vector3(val x: Double, val y: Double, val z: Double) {
-    fun to4(t: Double) = Vector4(t, x, y, z)
-    operator fun times(d: Double) = Vector3(x * d, y * d, z * d)
-    operator fun plus(v2: Vector3) = Vector3(x + v2.x, y + v2.y, z + v2.y)
-    operator fun minus(v2: Vector3) = Vector3(x - v2.x, y - v2.y, z - v2.y)
-    fun abs() = sqrt(x * x + y * y + z * z)
-    fun dot(d: Vector3) = x * d.x + y * d.y + z * d.z
-    fun cross(d: Vector3) = Vector3(y * d.z - z * d.y, z * d.x - x * d.z, x * d.y - y * d.x)
-}
-
-data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {
-    fun to3() = Vector3(x, y, z)
-    operator fun plus(v2: Vector4) = Vector4(t + v2.t, x + v2.x, y + v2.y, z + v2.y)
-    operator fun minus(v2: Vector4) = Vector4(t + v2.t, x + v2.x, y + v2.y, z + v2.y)
-
-    constructor(t: Double, v3: Vector3) : this(t, v3.x, v3.y, v3.z)
-}
-
-private fun gamma2(v: Double) = 1 / sqrt(1 - v)
 /**
- * The gamma function is the relativistic Lorentz factor.
- * @param v velocity
- * @return lorentzFactor
+ * A frame is a coordinate system that is relative to another coordinate system (by default the origin).
+ * Note: No rotation supported yet.
+ * @property r relative position to other frame as measured by the other frame
+ * @property v relative velocity as measured by the other  frame
  */
-fun gamma(v: Double) = gamma2(v * v)
+class Frame(val r: Vector4, val v: Vector3) {
+    companion object {
+        val ORIGIN = Frame(V4_0, V3_0)
+    }
 
-/**
- * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
- * and u′ as the transformed velocity of the body within the second frame.
- * https://en.wikipedia.org/wiki/Velocity-addition_formula
- * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
- * @param v as velocity of a second frame S′, as measured in S
- * @param u' as the velocity of the body within the second frame.
- * @return u as the \[observed] velocity of a body within a Lorentz frame S
- */
-fun observedAddedVelocity(v: Vector3, uPrime: Vector3): Vector3 {
-    // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
-    val vAbs = v.abs()
-    if (vAbs == 1.0) throw IllegalArgumentException("spaces cannot move with lightspeed")
-    val a = uPrime.dot(v)
-    val gamma_v = gamma(vAbs)
-    return (uPrime * (1.0 / gamma_v) + v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 + a))
+    fun isOrigin() = r == V4_0 && v == V3_0
 }
 
 /**
- * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,
- * and u′ as the transformed velocity of the body within the second frame.
- * https://en.wikipedia.org/wiki/Velocity-addition_formula
- * http://math.ucr.edu/home/baez/physics/Relativity/SR/velocity.html
- * @param u as velocity of a body within a Lorentz frame S (aka Frame)
- * @param v as velocity of a second frame S′, as measured in S
- * @return u' as the transformed velocity of the body within the second frame.
+ * State of an object in a frame (by default world origin frame).
+ * @property r position in corresponding frame
+ * @property v velocity in corresponding frame
+ * @property tau local proper time object
  */
-fun transformedAddedVelocity(v: Vector3, u: Vector3): Vector3 {
-    // we do not use the cross product form because I'm not sure it's not an approximation (and more ops)
-    val vAbs = v.abs()
-    if (vAbs == 1.0) throw IllegalArgumentException("frames cannot move with lightspeed")
-    val a = u.dot(v)
-    val gamma_v = gamma(v.abs())
-    return (u * (1.0 / gamma_v) - v + v * a * (gamma_v / (1 + gamma_v))) * (1.0 / (1.0 - a))
+data class State(val r: Vector4, val v: Vector3, val tau: Double) {
+    fun transform(from: Frame, to: Frame): State {
+        val s = if (from.isOrigin()) this else
+            State(lorentzTransformInv(from.v, r) + from.r, observedAddedVelocity(from.v, v), tau)
+        if (to.isOrigin()) return s
+        return State(lorentzTransform(to.v, s.r - to.r), transformedAddedVelocity(to.v, s.v), tau)
+    }
 }
-
-/**
- * Given a 4-vector in a frame determine 4-vector within a frame moving relative to the first frame.
- * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
- * @param v as velocity of a second frame S′, as measured in S
- * @param r as 4-vector of an event within a Lorentz frame S (aka Frame)
- * @return r' as the transformed 4-vector of the event within the second frame S'.
- */
-fun lorentzTransform(v: Vector3, r: Vector4): Vector4 {
-    val vAbs = v.abs()
-    if (vAbs == 0.0) return r
-    val n = v * (1 / vAbs)
-    val r3 = r.to3()
-    val gamma = gamma(vAbs)
-    return Vector4(
-        gamma * (r.t - v.dot(r3)),
-        r3 + n * ((gamma - 1) * r3.dot(n)) - n * (gamma * r.t * vAbs)
-    )
-}
-
-/**
- * Given a 4-vector in a frame moving relative to another one determine 4-vector within the second one.
- * https://en.wikipedia.org/wiki/Lorentz_transformation#Vector_transformations
- * @param v as velocity of a second frame S′, as measured in S
- * @param rPrime as 4-vector of an event within a Lorentz frame S' (aka Frame)
- * @return r as the transformed 4-vector of the event within S.
- */
-fun lorentzTransformInv(v: Vector3, rPrime: Vector4): Vector4 {
-    // same as lorentzTransform except for substituting -n for n
-    val vAbs = v.abs()
-    if (vAbs == 0.0) return rPrime
-    val n = v * (1 / vAbs)
-    val r3Prime = rPrime.to3()
-    val gamma = gamma(vAbs)
-    return Vector4(
-        gamma * (rPrime.t + v.dot(r3Prime)),
-        r3Prime + n * ((gamma - 1) * r3Prime.dot(n)) + v * (gamma * rPrime.t)
-    )
-}
-
-/**
- * Determine location of accelerated motion for proper time.
- * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
- * http://math.ucr.edu/home/baez/physics/Relativity/SR/Rocket/rocket.html
- * @param a0 proper acceleration in (momentarily co-moving) reference frame
- * @param tau proper time duration of the acceleration of the accelerated object
- * @return 4-vector of the resulting position within the original reference frame x
- *  velocity at proper time tau within the original reference frame
- */
-fun relativisticAcceleration(a0: Vector3, tau: Double): Pair<Vector4, Vector3> {
-    val aAbs = a0.abs()
-    if (aAbs == 0.0) return V3_0.to4(tau) to V3_0
-    val n = a0 * (1 / aAbs)
-    return Vector4(sinh(aAbs * tau) / aAbs, n * ((cosh(aAbs * tau) - 1) / aAbs)) to
-            n * tanh(aAbs * tau)
-}
-
-/**
- * Determine location of accelerated motion for coordinate time.
- * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
- * @param a0 proper acceleration in (momentarily co-moving) reference frame
- * @param tau proper time duration of the acceleration of the accelerated object
- * @return 4-vector of the resulting position within the original reference frame x
- *  velocity at proper time tau within the original reference frame
- */
-fun relativisticCoordAcceleration(a0: Vector3, t: Double): Pair<Pair<Vector4, Vector3>, Double> {
-    val aAbs = a0.abs()
-    if (aAbs == 0.0) return V3_0.to4(t) to V3_0 to t
-    val v = aAbs * t
-    val tau = ln(sqrt(1.0 + v.pow(2)) + v) / aAbs
-    val n = a0 * (1 / aAbs)
-    return Vector4(t, n * ((sqrt(1 + v.pow(2)) - 1) / aAbs)) to n * v to tau
-}
-
