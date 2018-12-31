@@ -21,23 +21,27 @@ class TimeWarpTest {
         assertEqualsS(s0, s0.transform(f0, f0), "identity")
 
         assertEqualsV((-EX).to4(0.0), s0.transform(f0, fx).r, "just displaced")
-        assertEqualsV(lorentzTransform(EX*0.5, V4_0), s0.transform(f0, fdx).r, "just moving")
-        assertEqualsV(lorentzTransform(EX*0.5, (-EX).to4(0.0)), s0.transform(f0, fxdx).r, "moving and displaced same dir")
-        assertEqualsV(lorentzTransform(EX*0.5, (-EX).to4(-1.0)), s0.transform(f0, fxtdx).r, "general one-dim case")
-
+        assertEqualsV(lorentzTransform(EX * 0.5, V4_0), s0.transform(f0, fdx).r, "just moving")
+        assertEqualsV(
+            lorentzTransform(EX * 0.5, (-EX).to4(0.0)),
+            s0.transform(f0, fxdx).r,
+            "moving and displaced same dir"
+        )
+        assertEqualsV(lorentzTransform(EX * 0.5, (-EX).to4(-1.0)), s0.transform(f0, fxtdx).r, "general one-dim case")
 
         val s1 = State(EX.to4(0.0), V3_0, 0.0)
         val s2 = State(EY.to4(0.0), V3_0, 0.0)
         val s3 = State((EX + EY).to4(0.0), V3_0, 0.0)
 
-        assertEqualsS(s1, s1.transform(f0, f0), "identity")
-        assertEqualsS(s1, s1.transform(fx, fx), "identity")
-        assertEqualsS(s1, s1.transform(fxt, fxt), "identity")
-        assertEqualsS(s1, s1.transform(fxtdy, fxtdy), "identity")
+        // try lots of combinations
+        for (state in setOf(s0, s1, s2, s3))
+            for (frame in setOf(f0, fx, fxt, fxdx, fxtdx, fxtdy, fytdx)) {
 
+                assertEqualsS(state, state.transform(frame, frame), "identity")
 
-        val s1Loop = s1.transform(fxtdy, f0).transform(f0, fytdx).transform(fytdx, fxtdy)
-        assertEqualsS(s1, s1Loop)
+                val stateLoop = state.transform(fxtdy, frame).transform(frame, fytdx).transform(fytdx, fxtdy)
+                assertEqualsS(state, stateLoop, "loop over $frame")
+            }
     }
 
 
