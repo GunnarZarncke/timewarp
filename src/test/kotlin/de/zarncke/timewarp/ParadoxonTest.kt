@@ -33,11 +33,10 @@ class ParadoxonTest {
     fun testRocketFitsThruSmallGap() {
         val tw = TimeWarp()
         val rL = TimeWarp.Obj("RocketLeft")
-        rL.addMotion(TimeWarp.Inertial(0.0,Double.POSITIVE_INFINITY, EX * 0.9))
-        rL.addMotion(TimeWarp.Inertial(0.0,Double.POSITIVE_INFINITY, EX * 0.9))
+        rL.addMotion(TimeWarp.AbruptVelocityChange(0.0,EX * 0.9))
         tw.addObj(rL, V4_0)
         val rR = TimeWarp.Obj("RocketRight")
-        rR.addMotion(TimeWarp.Inertial(0.09,Double.POSITIVE_INFINITY, EX * 0.9))
+        rR.addMotion(TimeWarp.AbruptVelocityChange(0.0,EX * 0.9))
         tw.addObj(rR, (EX * 2.0).to4(0.0))
 
         val dA = TimeWarp.Obj("DoorA")

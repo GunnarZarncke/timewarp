@@ -19,11 +19,13 @@ class TimeWarp {
         var now: Double = 0.0,
         val objects: MutableList<Obj> = mutableListOf(),
         val completeActions: MutableSet<Action> = mutableSetOf(),
-        val activeActions: MutableSet<Action> = mutableSetOf(),
+        val activeActions: MutableMap<Action, Obj> = mutableMapOf(),
         val events: MutableList<Event> = mutableListOf(),
         val states: MutableMap<Obj, State> = mutableMapOf()
     ) {
         var origin = Frame.ORIGIN
+        var logActions = true
+        var logMotions = true
 
         fun addObj(obj: Obj) {
             objects.add(obj)
@@ -49,7 +51,7 @@ class TimeWarp {
             now,
             objects.toMutableList(),
             completeActions.toMutableSet(),
-            activeActions.toMutableSet(),
+            activeActions.toMutableMap(),
             events.toMutableList(),
             states.toMutableMap()
         )
@@ -89,7 +91,7 @@ class TimeWarp {
             for (obj in world.objects) {
                 // among unhandled actions not earlier than now
                 val nextAction =
-                    obj.actions().filter { !world.completeActions.contains(it) && !world.activeActions.contains(it) }.firstOrNull()
+                    obj.actions().filter { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }.firstOrNull()
                         ?: continue
                 //  determine proper time tau of first scheduled action
                 var state = world.states[obj]!!
@@ -103,22 +105,22 @@ class TimeWarp {
                     val tauNext = entry.key
                     // (create ad-hoc inertial motion if needed)
                     if (tauNext > state.tau) {
-                        val s = Frame(state.r, state.v)
+                        val s = state.toMCRF()
                         state = Inertial(state.tau, tauNext)
                             .moveUntilProperTime(obj, s, state.tau, tauNext).transform(s, world.origin)
                     }
 
-                    val s = Frame(state.r, state.v)
+                    val mcrf = state.toMCRF()
                     val tauStart = max(tauNext, state.tau)   // not sure this matches with state/frame
                     val tauEnd = min(entry.value.tauEnd, tauAction)
                     // calculate 4-vector (in world frame) of the object at tau
-                    state = entry.value.moveUntilProperTime(obj, s, tauStart, tauEnd).transform(s, world.origin)
+                    state = entry.value.moveUntilProperTime(obj, mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
                 }
                 // (we may need to create an inertial movement afterwards)
                 if (state.tau < tauAction) {
-                    val s = Frame(state.r, state.v)
+                    val mcrf = state.toMCRF()
                     state = Inertial(state.tau, tauAction)
-                        .moveUntilProperTime(obj, s, state.tau, tauAction).transform(s, world.origin)
+                        .moveUntilProperTime(obj, mcrf, state.tau, tauAction).transform(mcrf, world.origin)
                 }
                 // take the earliest of these 4-vectors call it r and its object o and action a
                 if (earliestState == null || earliestState.r.t < state.r.t) {
@@ -131,7 +133,7 @@ class TimeWarp {
             if (earliestAction == null) {
                 // (no further actions; we continue motion directly to the end state)
                 for (obj in world.objects) {
-                    val state = executeMotionToCoordinateTime(world, obj, t)
+                    val state = executeMotionToCoordinateTime(world.origin, world.states[obj]!!, obj, t)
                     world.set(obj, state)
                 }
                 world.now = t
@@ -156,18 +158,23 @@ class TimeWarp {
                         worldNext.set(obj, earliestState)
                         continue
                     }
-                    val state = executeMotionToCoordinateTime(worldNext, obj, evaluatedTime)
+                    val state = executeMotionToCoordinateTime(world.origin, world.states[obj]!!, obj, evaluatedTime)
 
                     worldNext.set(obj, state)
                 }
 
                 val changes = Action.Changes()
-                for (action in world.activeActions + earliestAction) {
+                for ((action, obj) in world.activeActions + (earliestAction to earliestObj!!)) {
 
                     // execute action a on o with the world and tau_o as parameter (may update events)
                     // execute all other active actions
                     try {
-                        earliestAction.act(worldNext, earliestObj!!, earliestState.tau, changes)
+                        if (action == earliestAction)
+                            earliestAction.act(worldNext, earliestObj, earliestState.tau, changes)
+                        else {
+                            val objState = worldNext.states[obj]!!
+                            action.act(worldNext, obj, objState.tau, changes)
+                        }
                     } catch (e: RetrySmallerStep) {
                         // stop, we went too far ahead
                         evaluatedTime = (fallbackTime + evaluatedTime) / 2
@@ -177,6 +184,7 @@ class TimeWarp {
 
                 // (we successfully executed all actions for the evaluated time and can update the world to it)
                 changes.applyChanges(worldNext)
+
                 world = worldNext
                 if (evaluatedTime == targetTime)
                     break
@@ -185,18 +193,44 @@ class TimeWarp {
             }
 
             // mark action a as done
-            if (earliestAction.tauEnd != earliestAction.tauStart)
-                world.activeActions.add(earliestAction)
-            else world.completeActions.add(earliestAction)
+            if (earliestAction.tauEnd != earliestAction.tauStart) {
+                world.activeActions.put(earliestAction, earliestObj!!)
+                // add an action that a) causes an call to act() at the end, b) completes the action in the world
+                earliestObj.addAction(object : Action(earliestAction.tauEnd, earliestAction.tauEnd) {
+                    override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
+                        world.completeActions.add(earliestAction)
+                        world.activeActions.remove(earliestAction)
+                        if (world.logActions)
+                            world.events.add(
+                                Event(
+                                    "Action-end:$earliestAction",
+                                    earliestState.r,
+                                    earliestObj!!,
+                                    earliestObj
+                                )
+                            )
+                    }
+                })
+            } else
+                world.completeActions.add(earliestAction)
 
-            //world.events.add(Event("Action:$action", pos, obj, obj))
+            if (world.logActions)
+                world.events.add(Event("Action:$earliestAction", earliestState.r, earliestObj!!, earliestObj))
         }
 
         return world
     }
 
-    private fun executeMotionToCoordinateTime(world: World, obj: Obj, evaluatedTime: Double): State {
-        // execute motion of obj to r
+    /**
+     * Helper to advance (evaluate its motion) an object to a given <em>coordinate time</em>.
+     */
+    private fun executeMotionToCoordinateTime(
+        worldFrame: Frame,
+        objState: State,
+        obj: Obj,
+        evaluatedTime: Double
+    ): State {
+        // execute motion of obj to target time
         //   set p = current position of obj
         //   set t = now
         //   while t<r.t
@@ -207,48 +241,53 @@ class TimeWarp {
         //       set t = q.t
         //     else
         //       return q
-        var state = world.states[obj]!!
-        var objectCoordinateTime = world.now
+        var state = objState
+        assert(state.r.t == world.now)
+        var objectCoordinateTime = state.r.t
         val motions = getMotionsInRange(obj, state.tau, Double.POSITIVE_INFINITY).entries.toMutableList()
         while (objectCoordinateTime < evaluatedTime && !motions.isEmpty()) {
             val entry = motions.removeAt(0)
             val tauNext = entry.key
             // (create ad-hoc inertial motion if needed)
             if (tauNext > state.tau) {
-                val s = Frame(state.r, state.v)
+                val mcrf = state.toMCRF()
                 val transformedCoordinateTime =
-                    state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
+                    state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
                 state = Inertial(state.tau, tauNext)
-                    .moveUntilObserverTime(obj, s, transformedCoordinateTime)
-                    .transform(s, world.origin)
+                    .moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
+                    .transform(mcrf, worldFrame)
             }
 
             if (tauNext < state.tau) {
                 // (we need to undo motion back to its origin from where we can apply observer time)
-                val s = Frame(state.r, state.v)
+                val s = state.toMCRF()
                 state = entry.value.moveUntilProperTime(obj, s, state.tau, entry.key)
-                    .transform(s, world.origin)
+                    .transform(s, worldFrame)
             }
-            val s = Frame(state.r, state.v)
+            if (world.logMotions)
+                world.events.add(Event("Motion:${entry.value}", state.r, obj, obj))
+            val mcrf = state.toMCRF()
             // TODO much unused transform included here, might simplify:
             val transformedCoordinateTime =
-                state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
-            state = entry.value.moveUntilObserverTime(obj, s, transformedCoordinateTime)
-                .transform(s, world.origin)
+                state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
+            state = entry.value.moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
+                .transform(mcrf, worldFrame)
+            if (world.logMotions && state.tau == entry.value.tauEnd)
+                world.events.add(Event("Motion-end:${entry.value}", state.r, obj, obj))
+
             objectCoordinateTime = state.r.t
         }
         // (we may need to create an inertial movement afterwards)
         if (objectCoordinateTime < evaluatedTime) {
-            val s = Frame(state.r, state.v)
+            val mcrf = state.toMCRF()
             val transformedCoordinateTime =
-                state.copy(r = state.r.copy(t = evaluatedTime)).transform(world.origin, s).r.t
+                state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
             state = Inertial(state.tau, Double.POSITIVE_INFINITY)
-                .moveUntilObserverTime(obj, s, transformedCoordinateTime)
-                .transform(s, world.origin)
+                .moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
+                .transform(mcrf, worldFrame)
         }
 
-        if (state.r.t != evaluatedTime)
-            throw IllegalStateException()
+        assert(state.r.t == evaluatedTime)
         return state
     }
 
@@ -279,7 +318,7 @@ class TimeWarp {
         fun actions(): Set<Action> = actions
 
         fun addMotion(motion: Motion) {
-            val overlaps = motions.subMap(motion.tauStart, motion.tauEnd)
+            val overlaps = motions.subMap(motion.tauStart, false, motion.tauEnd, false)
             if (!overlaps.isEmpty())
                 throw IllegalArgumentException("motion $motion overlaps with $overlaps")
             val next = motions.tailMap(motion.tauEnd).values.firstOrNull()
@@ -321,25 +360,42 @@ class TimeWarp {
          * @return state (4-vector and velocity and tau of object either at t or the end of the motion whatever is earlier)
          */
         abstract fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State
+
+        override fun toString() = "${javaClass.simpleName}($tauStart-$tauEnd)"
+
     }
 
     /**
      * Inertial motion stays at the origin of its comoving reference frame.
-     * If a velocity is specified it applies at tauStart.
      */
-    class Inertial(tauStart: Double, tauEnd: Double, val v: Vector3 = V3_0) : Motion(tauStart, tauEnd) {
+    open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd) {
         override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
-            return State((v * (tauTo - tauNow)).to4(tauTo - tauNow), v, tauNow)
+            return State(V3_0.to4(tauTo - tauNow), V3_0, tauNow)
         }
 
         override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
             // t = tau for inertial motion
             // see https://en.wikipedia.org/wiki/Proper_time
-            var dt = t - coMovingFrame.r.t
+            var dt = t
             if (this.tauStart + dt > tauEnd) dt = tauEnd - tauStart
-            val p = (v * dt).to4(dt)
-            return State(p, v, this.tauStart + dt)
+            return State(V3_0.to4(dt), V3_0, this.tauStart + dt)
         }
+    }
+
+    /**
+     * Instantly (at tauStart) changes motion to given relative velocity relative to its comoving reference frame.
+     */
+    class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
+        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+            assert(tauStart == tauNow)
+            return State(V4_0, v, tauNow)
+        }
+
+        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
+            return State(V4_0, v, tauStart)
+        }
+
+        override fun toString() = "${super.toString()} v=$v"
     }
 
     /**
@@ -352,17 +408,15 @@ class TimeWarp {
             return relativisticAcceleration(a, tauTo - tauNow).copy(tau = tauTo)
         }
 
-        override fun moveUntilObserverTime(
-            obj: Obj,
-            coMovingFrame: Frame,
-            t: Double
-        ): State {
+        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
             val state = relativisticCoordAcceleration(a, t)
 
             if (this.tauStart + state.tau < tauEnd)
                 return state.copy(tau = state.tau + tauStart)
             return relativisticAcceleration(a, tauEnd - tauStart).copy(tau = tauEnd)
         }
+
+        override fun toString() = "${super.toString()} a=$a"
     }
 
     abstract class Action(val tauStart: Double, val tauEnd: Double) {
@@ -524,14 +578,16 @@ var eps = 0.000001
  * A frame is a coordinate system that is relative to another coordinate system (by default the origin).
  * Note: No rotation supported yet.
  * @property r relative position to other frame as measured by the other frame
- * @property v relative velocity as measured by the other  frame
+ * @property v relative velocity as measured by the other frame
  */
-class Frame(val r: Vector4, val v: Vector3) {
+data class Frame(val r: Vector4, val v: Vector3) {
     companion object {
         val ORIGIN = Frame(V4_0, V3_0)
     }
 
     fun isOrigin() = r == V4_0 && v == V3_0
+
+    fun boost(v: Vector3) = Frame(lorentzTransform(v, r), transformedAddedVelocity(v, this.v))
 }
 
 /**
@@ -541,6 +597,12 @@ class Frame(val r: Vector4, val v: Vector3) {
  * @property tau local proper time object
  */
 data class State(val r: Vector4, val v: Vector3, val tau: Double) {
+
+    /**
+     * @return momentarily co-moving reference frame
+     */
+    fun toMCRF() = Frame(r, v)
+
     /**
      * Transform from one frame into another.
      * @param from Frame in which the state applied (must be provided by context)
@@ -550,7 +612,7 @@ data class State(val r: Vector4, val v: Vector3, val tau: Double) {
         //if(from == to) return this
         // TODO currently we always go over the origin space, this double transform can be combined
         val s = if (from.isOrigin()) this else
-            State(lorentzTransformInv(from.v, r) + from.r, observedAddedVelocity(from.v, v), tau)
+            State(lorentzTransformInv(from.v, this.r) + from.r, observedAddedVelocity(from.v, this.v), tau)
         if (to.isOrigin()) return s
         return State(lorentzTransform(to.v, s.r - to.r), transformedAddedVelocity(to.v, s.v), tau)
     }

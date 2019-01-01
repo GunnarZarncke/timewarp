@@ -21,12 +21,15 @@ class TimeWarpTest {
         assertEqualsS(s0, s0.transform(f0, f0), "identity")
 
         assertEqualsV((-EX).to4(0.0), s0.transform(f0, fx).r, "just displaced")
+
         assertEqualsV(lorentzTransform(EX * 0.5, V4_0), s0.transform(f0, fdx).r, "just moving")
+
         assertEqualsV(
             lorentzTransform(EX * 0.5, (-EX).to4(0.0)),
             s0.transform(f0, fxdx).r,
             "moving and displaced same dir"
         )
+        
         assertEqualsV(lorentzTransform(EX * 0.5, (-EX).to4(-1.0)), s0.transform(f0, fxtdx).r, "general one-dim case")
 
         val s1 = State(EX.to4(0.0), V3_0, 0.0)
@@ -46,7 +49,7 @@ class TimeWarpTest {
 
 
     @Test
-    fun testSimulateT1() {
+    fun testSimulateTrivial() {
         val tw = TimeWarp()
         val world = tw.world
         val o1 = TimeWarp.Obj("Test")
@@ -55,7 +58,21 @@ class TimeWarpTest {
 
         assertEquals(State(V4_0, V3_0, 0.0), world.stateInFrame(o1, world.origin))
         tw.simulateTo(1.0)
-        assertEquals(State(EX.to4(1.0), EX, 1.0), world.stateInFrame(o1, world.origin))
+        println(world.events)
+        assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1, world.origin))
+    }
+
+    @Test
+    fun testSimulateSimpleMove() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = TimeWarp.Obj("Test")
+        tw.addObj(o1, V4_0)
+        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
+
+        tw.simulateTo(1.0)
+        println(world.events)
+        assertEquals(State((EX * 0.4).to4(1.0), EX * 0.5, 1.0), world.stateInFrame(o1, world.origin))
     }
 
 }
