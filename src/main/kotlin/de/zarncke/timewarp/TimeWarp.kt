@@ -63,9 +63,9 @@ class TimeWarp {
     fun init() {
     }
 
-    fun addObj(obj: Obj, position: Vector4) {
+    fun addObj(obj: Obj, position: Vector3, velocity: Vector3 = V3_0) {
         world.addObj(obj)
-        world.set(obj, State(position, V3_0, 0.0))
+        world.set(obj, State(position.to4(world.now), velocity, 0.0))
     }
 
     /**
@@ -352,8 +352,7 @@ class TimeWarp {
         // TODO check what happens with lateral acceleration, maybe this coMovingFrame thing is not yet well thought out
 
         /**
-         * Determines the location and velocity of an object at a given <em>coordinate time</em> t within the given reference frame.
-         * This method will be called to determine the location and proper time of the associated object at coordinate time.
+         * Determines the state (location,  velocity proper time) of an object at a given <em>coordinate time</em> t within the given reference frame.
          * @param obj at
          * @param t coordinate time of object in
          * @param coMovingFrame co-moving with object at time tauStart (!)
@@ -384,6 +383,7 @@ class TimeWarp {
 
     /**
      * Instantly (at tauStart) changes motion to given relative velocity relative to its comoving reference frame.
+     * (we disregard that this requires unphysical infinite acceleration and assume that it is "a very short very strong acceleration")
      */
     class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
         override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
