@@ -22,6 +22,7 @@ class ParadoxonTest {
         val event = world.events[0]
         assertEquals("A0", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
+        println( tw.world.stateInFrame(o1, world.origin))
     }
 
     /**
@@ -65,8 +66,8 @@ class ParadoxonTest {
         val world = tw.simulateTo(10.0)
         val event = world.events[0]
         assertEquals("collision", event.name)
-        val ageYoung = world.stateInFrame(twinYoung, world.origin).r.t
-        val ageOld = world.stateInFrame(twinOld, world.origin).r.t
+        val ageYoung = world.stateInFrame(twinYoung, world.origin).tau
+        val ageOld = world.stateInFrame(twinOld, world.origin).tau
         assertTrue(ageOld > ageYoung)
     }
 

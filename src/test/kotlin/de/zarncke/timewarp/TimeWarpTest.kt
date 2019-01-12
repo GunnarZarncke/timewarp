@@ -53,7 +53,7 @@ class TimeWarpTest {
         val tw = TimeWarp()
         val world = tw.world
         val o1 = TimeWarp.Obj("Test")
-        tw.addObj(o1, V4_0)
+        tw.addObj(o1, V3_0)
         o1.addMotion(TimeWarp.Inertial(0.0, 1.0))
 
         assertEquals(State(V4_0, V3_0, 0.0), world.stateInFrame(o1, world.origin))
@@ -67,8 +67,21 @@ class TimeWarpTest {
         val tw = TimeWarp()
         val world = tw.world
         val o1 = TimeWarp.Obj("Test")
-        tw.addObj(o1, V4_0)
-        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
+        tw.addObj(o1, V3_0, EX*0.5)
+//        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
+
+        tw.simulateTo(1.0)
+        println(world.events)
+        assertEquals(State((EX * 0.4).to4(1.0), EX * 0.5, 1.0), world.stateInFrame(o1, world.origin))
+    }
+
+    @Test
+    fun testSimulateSimpleAbruptMove() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = TimeWarp.Obj("Test")
+        tw.addObj(o1, V3_0, EX*0.5)
+//        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
 
         tw.simulateTo(1.0)
         println(world.events)
