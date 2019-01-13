@@ -1,11 +1,9 @@
 package de.zarncke.timewarp
 
+import org.junit.Assert
 import org.junit.Test
 import java.lang.IllegalArgumentException
-import kotlin.math.cosh
-import kotlin.math.sinh
-import kotlin.math.sqrt
-import kotlin.math.tanh
+import kotlin.math.*
 import kotlin.test.assertEquals
 
 class RelativisticMathTest {
@@ -78,6 +76,83 @@ class RelativisticMathTest {
 
         val s3 = relativisticCoordAcceleration(EX, 1.0)
         val s4 = relativisticAcceleration(EX, s3.tau)
+        assertEqualsS(s3, s4, "relativistic acceleration should agree between coordinate and proper time")
+    }
+
+    @Test
+    fun testNoAccelerationProperAndCoordinate() {
+        val s1 = relativisticAcceleration(V3_0, 1.0)
+        val s2 = relativisticCoordAcceleration(V3_0, s1.r.t)
+        assertEqualsS(s1, s2, "relativistic acceleration should agree between proper and coordinate time")
+
+        val s3 = relativisticCoordAcceleration(V3_0, 1.0)
+        val s4 = relativisticAcceleration(V3_0, s3.tau)
+        assertEqualsS(s3, s4, "relativistic acceleration should agree between coordinate and proper time")
+    }
+
+    @Test
+    fun testAccelerationProperAndCoordinateBase() {
+        val veps = Vector3(Double.MIN_VALUE, 0.0, 0.0)
+        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(V3_0, 0.0, Frame(V4_0, V3_0)))
+        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(veps, 0.0, Frame(V4_0, V3_0)))
+        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(V3_0, 0.0, Frame(V4_0, veps)))
+        assertEqualsS(
+            relativisticCoordAcceleration(V3_0, 1.0),
+            relativisticCoordAcceleration(V3_0, 1.0, Frame(V4_0, V3_0))
+        )
+        assertEqualsS(
+            relativisticCoordAcceleration(veps, 1.0),
+            relativisticCoordAcceleration(V3_0, 1.0, Frame(V4_0, V3_0))
+        )
+        assertEqualsS(relativisticCoordAcceleration(EX, 1.0), relativisticCoordAcceleration(EX, 1.0, Frame(V4_0, V3_0)))
+        assertEqualsS(relativisticCoordAcceleration(EX, 1.0), relativisticCoordAcceleration(EX, 1.0, Frame(V4_0, veps)))
+    }
+
+    @Test
+    fun testAccelerationProperAndCoordinateOrtho() {
+        val a = 0.5
+        val t = 1.0
+        val v = 0.5
+        val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EY * v)) // note EX and EY orthogonal directions
+        assertEquals(1 / a * asinh(a * t / gamma(v)), s.tau)
+        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+    }
+
+    @Test
+    fun testAccelerationProperAndCoordinateCollinear() {
+        val a = 0.5
+        val t = 1.0
+        val v = 0.5
+        val atg = a * t / gamma(v)
+        val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EX * v))  // note EX in both cases
+        assertEquals(1 / a * asinh((v * (-sqrt(atg * atg + 2 * v * atg + 1) + 1) + atg) / (1 - v * v)), s.tau)
+        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+    }
+
+    @Test
+    fun testAccelerationProperAndCoordinateFull() {
+        val a = 0.5
+        val t = 1.0
+        val v = 0.5
+        val vv = (EX + EY).norm() * v   // v and a into different directions
+        val atg = a * t / gamma(v)
+        val w = EX.dot(vv)
+        val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, vv))
+        assertEquals(1 / a * asinh((w * (-sqrt(atg * atg + 2 * w * atg + 1) + 1) + atg) / (1 - w * w)), s.tau)
+        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+    }
+
+
+    @Test
+    fun testAccelerationProperAndCoordinateRelative() {
+        val dv = EX * 0.5
+        val f = Frame(V4_0, dv)
+        val s1 = relativisticAcceleration(EX, 1.0).transform(f, Frame.ORIGIN)
+        val s2 = relativisticCoordAcceleration(EX, s1.r.t, f)
+        assertEqualsS(s1, s2, "relativistic acceleration should agree between proper and coordinate time")
+
+        val s3 = relativisticCoordAcceleration(EX, 1.0, f)
+        val s4 = relativisticAcceleration(EX, s3.tau).transform(f, Frame.ORIGIN)
         assertEqualsS(s3, s4, "relativistic acceleration should agree between coordinate and proper time")
     }
 

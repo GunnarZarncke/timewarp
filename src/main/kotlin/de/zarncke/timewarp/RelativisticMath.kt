@@ -98,10 +98,26 @@ fun relativisticAcceleration(a0: Vector3, tau: Double): State {
     val aAbs = a0.abs()
     if (aAbs == 0.0) return State(V3_0.to4(tau), V3_0, tau)
     val n = a0 * (1 / aAbs)
-    return State(
-        Vector4(sinh(aAbs * tau) / aAbs, n * ((cosh(aAbs * tau) - 1) / aAbs)),
-        n * tanh(aAbs * tau), tau
-    )
+    val sinh = sinh(aAbs * tau)
+    val cosh = cosh(aAbs * tau)
+    val tanh = sinh / cosh
+    return State(Vector4(sinh / aAbs, n * ((cosh - 1) / aAbs)), n * tanh, tau)
+}
+
+/**
+ * Determine location of accelerated motion for coordinate time.
+ * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
+ * @param a0 proper acceleration in (momentarily co-moving) reference frame
+ * @param tau proper time duration of the acceleration of the accelerated object
+ * @return state (4-vector and velocity of the resulting position within the frame, and proper time tau at that time)
+ */
+fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
+    val aAbs = a0.abs()
+    if (aAbs == 0.0) return State(V3_0.to4(t), V3_0, t)
+    val v = aAbs * t
+    val tau = asinh(v) / aAbs
+    val n = a0 * (1 / aAbs)
+    return State(Vector4(t, n * ((sqrt(1 + sqr(v)) - 1) / aAbs)), n * tanh(aAbs * tau), tau)
 }
 
 /**
@@ -133,59 +149,54 @@ fun relativisticAcceleration(a0: Vector3, tau: Double): State {
  * We now expand t' and r' in \(t(\tau)\)
  * $$t(\tau) = \gamma (t'(\tau) + r'(\tau) \vv*n\alpha \cdot v \vv nv)$$
  * $$        = \gamma (t'(\tau) + 1/\alpha (\sqrt{(\alpha t'(\tau))^2+1} - 1) \vv*n\alpha \cdot v \vv nv)$$
- * To keep this managable we call \(\vv*n\alpha \cdot v \vv nv) = w\) and simplify:
+ * To keep this manageable we call \(\vv*n\alpha \cdot v \vv nv) = w\) and simplify:
  * $$t(\tau) = \gamma (t'(\tau) + w\sqrt{t'(\tau)^2+1/\alpha^2} - w/\alpha)$$
  * We solve this with Maxima for \(t'(\tau)\):
  * <pre>
  *  to_poly_solve(t=gamma*(tp+w*sqrt(tp^2+1/alpha^2)-w/alpha),tp);
  * </pre>
- * $$t'(\tau) = { w/\gamma\sqrt{(\alpha t(\tau))^2 + \gamma^2 + 2\alpha t(\tau)\gamma w} + w + \alpha/\gamma t(\tau) \over \alpha(w^2-1)}$$
- * But
+ * $$t'(\tau) = { -w/\gamma\sqrt{(\alpha t(\tau))^2 + \gamma^2 + 2\alpha t(\tau)\gamma w} + w + \alpha/\gamma t(\tau) \over \alpha(1 - w^2)}$$
+ * We take the negative square root because it is the only physical solution (and the constraints for complex valued arguments don't apply).
+ * Because
  * $$t'(\tau) = 1/\alpha * sinh \alpha \tau => \tau = \alpha sinh^{-1} \alpha t$$
- * so
- * $$\tau = 1/\alpha sinh^{-1}{ w/\gamma\sqrt{(\alpha t(\tau))^2 + \gamma^2 + 2\alpha t(\tau)\gamma w} + w + \alpha/\gamma t(\tau) \over w^2 - 1}$$
+ * we can now solve for \(\tau\):
+ * $$\tau = 1/\alpha sinh^{-1}{ -w/\gamma\sqrt{(\alpha t(\tau))^2 + \gamma^2 + 2\alpha t(\tau)\gamma w} + w + \alpha/\gamma t(\tau) \over w^2 - 1}$$
+ * And slightly reorder factors:
+ * $$\tau = 1/\alpha sinh^{-1}{ -w\sqrt{(\alpha/\gamma t(\tau))^2 + 1 + 2\alpha/\gamma t(\tau) w} + w + \alpha/\gamma t(\tau) \over w^2 - 1}$$
+ * (note how t only occurs in terms \like \(alpha/\gamma t(\tau)\))
  * A simple check shows that for \(\v = 0\) we have \(\tau = 1/\alpha sinh^{-1} \alpha t\) as expected.
  * We can also derive e.g. that for \(\vv v \bot \vv r\) we have \(\tau = 1/\alpha sinh^{-1}{\alpha t \over \gamma}\).
  * Now that we have tau we can apply [relativisticAcceleration] to derive the rest.
  * @param a0 proper acceleration in (momentarily co-moving) reference frame
  * @param t coordinate time in the observer frame at the end of the acceleration motion of the object
- * @param v velocity of observer frame relative to the co-coving reference frame at the start of the acceleration
- * @return state (4-vector and velocity of the resulting position within the frame)
+ * @param f frame of co-moving observer at the start of the acceleration (with velocity v relative to origin frame)
+ * @return state (4-vector and velocity of the resulting position within the frame) in the origin frame
  */
-fun relativisticCoordAcceleration(a0: Vector3, t: Double, v: Vector3): State {
+fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
+    val v = frame.v
     if (v == V3_0) return relativisticCoordAcceleration(a0, t)
     if (a0 == V3_0) return lorentzTransform(v, V3_0.to4(t)).let { State(it, V3_0, it.t) }
     val aAbs = a0.abs()
     val na = a0 * (1 / aAbs)
     val vAbs = v.abs()
     if (vAbs >= 1.0) throw throw IllegalArgumentException("frames cannot move with lightspeed")
-    val nv = v * (1 / vAbs)
     val gamma = gamma(vAbs)
 
     val w = v.dot(na)
-    val at = aAbs * t
-    val radicant = sqr(at) + sqr(gamma) + 2 * at * gamma * w
-    val tau = asinh((w * (sqrt(radicant) + 1) + at / gamma) / (w * w - 1)) / aAbs
+    val atg = aAbs * t / gamma
+    val wsqrt = w * sqrt(atg * atg + 2 * atg * w + 1)
+    assert(wsqrt <= w + atg)
+    val tau = asinh((-wsqrt + w + atg) / (1 - w * w)) / aAbs
 
-    val s = relativisticAcceleration(a0, tau)
-    val vT = observedAddedVelocity(v, s.v)
-    return State(s.r, vT, tau)
-}
-
-/**
- * Determine location of accelerated motion for coordinate time.
- * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)
- * @param a0 proper acceleration in (momentarily co-moving) reference frame
- * @param tau proper time duration of the acceleration of the accelerated object
- * @return state (4-vector and velocity of the resulting position within the frame, and proper time tau at that time)
- */
-fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
-    val aAbs = a0.abs()
-    if (aAbs == 0.0) return State(V3_0.to4(t), V3_0, t)
-    val v = aAbs * t
-    val tau = ln(sqrt(1.0 + v.pow(2)) + v) / aAbs
-    val n = a0 * (1 / aAbs)
-    return State(Vector4(t, n * ((sqrt(1 + v.pow(2)) - 1) / aAbs)), n * tanh(aAbs * tau), tau)
+    return relativisticAcceleration(a0, tau).transform(frame, Frame.ORIGIN)
 }
 
 inline fun sqr(x: Double) = x * x
+
+/*
+ * Idea
+ * Instead of double we could use 64bit fixed point arithmetic for velocities because all <1 anyway and
+ * it has higher precision (multiplication is fast with Math.multiplyHigh()).
+ *
+ * Docs use MathJAX https://www.mathjax.org/#gettingstarted and ESVECT https://ctan.org/pkg/esvect
+ */
