@@ -1,18 +1,18 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.V3_0
+import de.zarncke.timewarp.math.Vector3
+import de.zarncke.timewarp.math.Vector4
 import java.lang.IllegalArgumentException
-import java.lang.IllegalStateException
 import java.util.*
-import kotlin.Exception
 import kotlin.math.*
 
 /**
  * Relativistic simulation.
  *
- * Velocity v with unit c=1
+ * All computations with velocities (v) use units c=1.
  */
 class TimeWarp {
-    // Koma: mat[1.0,1.0,1.0].T*mat[1.0,1.0,1.0]
 
 
     class World(
@@ -43,7 +43,7 @@ class TimeWarp {
         fun stateInFrame(obj: Obj, s: Frame) =
             (states[obj] ?: throw IllegalArgumentException("unknown object $obj")).transform(origin, s)
 
-        fun set(obj: TimeWarp.Obj, state: State) {
+        fun set(obj: Obj, state: State) {
             states[obj] = state
         }
 
@@ -175,7 +175,7 @@ class TimeWarp {
                             val objState = worldNext.states[obj]!!
                             action.act(worldNext, obj, objState.tau, changes)
                         }
-                    } catch (e: RetrySmallerStep) {
+                    } catch (e: Action.RetrySmallerStep) {
                         // stop, we went too far ahead
                         evaluatedTime = (fallbackTime + evaluatedTime) / 2
                         continue@time
@@ -301,236 +301,7 @@ class TimeWarp {
         return motions
     }
 
-    class Obj(val name: String) {
-        /**
-         * There can only be one motion at a time; if no motion is specified the object continues in inertial
-         * movement i.e. with the last velocity.
-         */
-        private val motions: TreeMap<Double, Motion> = TreeMap()
 
-
-        /**
-         * Any overlapping number of actions can be specified, they just can't change the movement of the object.
-         */
-        private val actions: TreeSet<Action> = TreeSet()
-
-        fun motions(): SortedMap<Double, Motion> = motions
-        fun actions(): Set<Action> = actions
-
-        fun addMotion(motion: Motion) {
-            val overlaps = motions.subMap(motion.tauStart, false, motion.tauEnd, false)
-            if (!overlaps.isEmpty())
-                throw IllegalArgumentException("motion $motion overlaps with $overlaps")
-            val next = motions.tailMap(motion.tauEnd).values.firstOrNull()
-            if (next != null && motion.tauEnd > next.tauStart)
-                throw IllegalArgumentException("motion $motion overlaps partly with $next")
-            motions.put(motion.tauStart, motion)
-        }
-
-        fun addAction(action: Action) {
-            if (action.tauEnd < action.tauStart) throw IllegalArgumentException()
-            actions.add(action)
-        }
-    }
-
-    class RetrySmallerStep : Exception()
-
-    abstract class Motion(val tauStart: Double, val tauEnd: Double) {
-
-        /**
-         * Determines the location and velocity of an object at a given <em>proper time</em> tauTo within a co-moving reference frame.
-         * This method will be called when the proper time of the associated object is greater or equal the motion start time.
-         * It may be called multiple times with different values (or even the same value) for tauNow and tauTo (in corresponding reference frames).
-         * @param obj in
-         * @param coMovingFrame co-moving with object at
-         * @param tauNow proper time of object (sometime during the motion) to
-         * @param tauTo proper time of object (may be *before* tauNow, but not before tauStart)
-         * @return state (4-vector and velocity of object at proper time tau within given frame)
-         */
-        abstract fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State
-
-        // TODO check what happens with lateral acceleration, maybe this coMovingFrame thing is not yet well thought out
-
-        /**
-         * Determines the state (location,  velocity proper time) of an object at a given <em>coordinate time</em> t within the given reference frame.
-         * @param obj at
-         * @param t coordinate time of object in
-         * @param coMovingFrame co-moving with object at time tauStart (!)
-         * @return state (4-vector and velocity and tau of object either at t or the end of the motion whatever is earlier)
-         */
-        abstract fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State
-
-        override fun toString() = "${javaClass.simpleName}($tauStart-$tauEnd)"
-
-    }
-
-    /**
-     * Inertial motion stays at the origin of its comoving reference frame.
-     */
-    open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd) {
-        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
-            return State(V3_0.to4(tauTo - tauNow), V3_0, tauNow)
-        }
-
-        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-            // t = tau for inertial motion
-            // see https://en.wikipedia.org/wiki/Proper_time
-            var dt = t
-            if (this.tauStart + dt > tauEnd) dt = tauEnd - tauStart
-            return State(V3_0.to4(dt), V3_0, this.tauStart + dt)
-        }
-    }
-
-    /**
-     * Instantly (at tauStart) changes motion to given relative velocity relative to its comoving reference frame.
-     * (we disregard that this requires unphysical infinite acceleration and assume that it is "a very short very strong acceleration")
-     */
-    class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
-        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
-            assert(tauStart == tauNow)
-            return State(V4_0, v, tauNow)
-        }
-
-        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-            return State(V4_0, v, tauStart)
-        }
-
-        override fun toString() = "${super.toString()} v=$v"
-    }
-
-    /**
-     * "a) Hyperbolic motion: The constant, longitudinal proper acceleration
-     * {\alpha =a_{x}^{0}=a_{x}\gamma ^{3}} by (4a) leads to the world line..."
-     * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)#Curved_world_lines
-     */
-    class LongitudinalAcceleration(tauStart: Double, tauEnd: Double, val a: Vector3) : Motion(tauStart, tauEnd) {
-        override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
-            return relativisticAcceleration(a, tauTo - tauNow).copy(tau = tauTo)
-        }
-
-        override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-            val state = relativisticCoordAcceleration(a, t)
-
-            if (this.tauStart + state.tau < tauEnd)
-                return state.copy(tau = state.tau + tauStart)
-            return relativisticAcceleration(a, tauEnd - tauStart).copy(tau = tauEnd)
-        }
-
-        override fun toString() = "${super.toString()} a=$a"
-    }
-
-    abstract class Action(val tauStart: Double, val tauEnd: Double) {
-        data class Changes(
-            val actions: MutableSet<Pair<Obj, Action>> = mutableSetOf(),
-            val motions: MutableList<Pair<Obj, Motion>> = mutableListOf(),
-            val objects: MutableSet<Pair<Obj, Vector4>> = mutableSetOf(),
-            val events: MutableSet<Event> = mutableSetOf()
-        ) {
-            fun applyChanges(world: TimeWarp.World) {
-                for (entry in actions) {
-                    entry.first.addAction(entry.second)
-                }
-                for (entry in motions) {
-                    entry.first.addMotion(entry.second)
-                }
-                for (entry in objects) {
-                    world.addObj(entry.first)
-                    world.set(entry.first, State(entry.second, V3_0, 0.0))
-                }
-                world.events.addAll(events)
-            }
-        }
-
-
-        /**
-         * This method will be called at the proper time tauStart and tauEnd.
-         * It may also be called at other times in between (at other events at the same coordinate time).
-         * when of the associated object is greater or equal the given time.
-         * If the Action needs to narrow down on a certain time it may throw [RetrySmallerStep] which will cause
-         * time interval halving. Caution: Slow.
-         * <br/>
-         * The method may...
-         * <ul>
-         *     <li>inspect the World but not change it (instead use changes)</li>
-         *     <li>return new actions in the future or now</li>
-         *     <li>return new motions in the future or now (but no overlapping motions are allowed)</li>
-         *     <li>return new objects in the lightcone of this object</li>
-         *     <li>throw [RetrySmallerStep] to indicate more detailed processing (see above)</li>
-         * </ul>
-         * @param world with state of all objects as seen by
-         * @param obj acted on at
-         * @param tau proper time of object
-         * @param changes to use
-         * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
-         */
-        open fun act(world: World, obj: Obj, tau: Double, changes: Changes) {}
-
-        /**
-         *
-         */
-        open fun always() = false
-    }
-
-    /**
-     * Creates a collision event if this object is at the same position as another (tracked) object.
-     * Currently does *not* reduce time step if objects get close to another, but only detects collision at existing
-     * events/simulation times.
-     */
-    open class DetectCollision(tau: Double, val until: Double, val targets: Set<Obj>) :
-        Action(tau, Double.POSITIVE_INFINITY) {
-        private val generated = mutableSetOf<Obj>()
-        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
-            val sourcePos = world.stateInFrame(obj, world.origin)
-            for (target in targets - generated) {
-                val objPos = world.stateInFrame(target, world.origin)
-                val dr = (objPos.r.to3() - sourcePos.r.to3()).abs()
-                // TODO if dr is small compared to time step reduce time step
-                if (dr < eps) {
-                    collide(changes, objPos, obj, target)
-                    generated.add(target)
-                } else if (dr > eps) generated.remove(target)
-            }
-        }
-
-        open fun collide(changes: Changes, objPos: State, self: Obj, obj: Obj) {
-            changes.events.add(Event("collide", objPos.r, self, obj))
-        }
-    }
-
-    /**
-     * A Sender action creates periodical [Pulse]s originating from its objects 4-vector.
-     * The period is determined from object proper time.
-     */
-    class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action(start, start) {
-        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
-            if (tau == start) {
-                changes.actions.add(obj to Sender(name, start + period, period, no + 1))
-                changes.actions.add(obj to Pulse("pulse:$name-$no", start))
-            }
-        }
-    }
-
-    /**
-     * A Pulse is a single light signal that is sent at the start time (proper) in all directions and received by
-     * all objects that it reaches, creating an Event at the intercept 4-vector.
-     */
-    class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INFINITY) {
-        private val generated = mutableSetOf<Obj>()
-        override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
-            // note: sourcePos.t is transformed start tau
-            // and objPos.t is transformed now tau
-            val sourcePos = world.stateInFrame(obj, world.origin).r
-            for (other in world.objects - generated) {
-                val objPos = world.stateInFrame(other, world.origin).r
-                val dr = (objPos.to3() - sourcePos.to3()).abs()
-                val dt = objPos.t - sourcePos.t
-                if (abs(dr - dt) < eps) {
-                    changes.events.add(Event(name, objPos, obj, other))
-                    generated.add(other)
-                } else if (dr > dt) throw RetrySmallerStep()
-            }
-        }
-    }
 
     data class Event(
         val name: String,
@@ -539,81 +310,11 @@ class TimeWarp {
         val receiver: Obj
     )
 
-    class Formula {
-
-        val variables = mutableSetOf<String>()
-        val equations = mutableListOf<String>()
-        var v1 = 0
-        var v2 = 0
-        var t = 0
-
-        fun varForV1(): String {
-            val v = "v_$v1"; v1++; variables.add(v); return v
-        }
-
-        fun varForV2(): String {
-            val v = "u_$v2"; v2++; variables.add(v); return v
-        }
-
-        fun varForTime(): String {
-            val v = "t_$t"; t++; variables.add(v); return v
-        }
-
-        fun addVelocity(v: String, u: String): String {
-            val w = varForV1()
-            equations.add(
-                "$w &= $v \\oplus  $u &= " +
-                        "\\frac{1}{1 - $u \\cdot $v}\\left[$u - $v + \\frac{\\gamma_$v}{1+\\gamma_$v} $v \\times($v \\times $u)\\right]"
-            )
-            return w
-        }
-
-    }
 }
 
 // TODO move into context object?
 var eps = 0.000001
 
-/**
- * A frame is a coordinate system that is relative to another coordinate system (by default the origin).
- * Note: No rotation supported yet.
- * @property r relative position to other frame as measured by the other frame
- * @property v relative velocity as measured by the other frame
+/* Idea:
+ * use Koma: mat[1.0,1.0,1.0].T*mat[1.0,1.0,1.0]
  */
-data class Frame(val r: Vector4, val v: Vector3) {
-    companion object {
-        val ORIGIN = Frame(V4_0, V3_0)
-    }
-
-    fun isOrigin() = r == V4_0 && v == V3_0
-
-    fun boost(v: Vector3) = Frame(lorentzTransform(v, r), transformedAddedVelocity(v, this.v))
-}
-
-/**
- * State of an object in a frame (by default world origin frame).
- * @property r position in corresponding frame
- * @property v velocity in corresponding frame
- * @property tau local proper time object
- */
-data class State(val r: Vector4, val v: Vector3, val tau: Double) {
-
-    /**
-     * @return momentarily co-moving reference frame
-     */
-    fun toMCRF() = Frame(r, v)
-
-    /**
-     * Transform from one frame into another.
-     * @param from Frame in which the state applied (must be provided by context)
-     * @param to target Frame
-     */
-    fun transform(from: Frame, to: Frame): State {
-        //if(from == to) return this
-        // TODO currently we always go over the origin space, this double transform can be combined
-        val s = if (from.isOrigin()) this else
-            State(lorentzTransformInv(from.v, this.r) + from.r, observedAddedVelocity(from.v, this.v), tau)
-        if (to.isOrigin()) return s
-        return State(lorentzTransform(to.v, s.r - to.r), transformedAddedVelocity(to.v, s.v), tau)
-    }
-}

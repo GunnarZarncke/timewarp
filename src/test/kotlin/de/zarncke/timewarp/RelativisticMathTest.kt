@@ -1,5 +1,6 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.*
 import org.junit.Assert
 import org.junit.Test
 import java.lang.IllegalArgumentException
@@ -11,45 +12,92 @@ class RelativisticMathTest {
     @Test
     fun testAddVelocity() {
         // stationary frame
-        assertEqualsV(V3_0, observedAddedVelocity(V3_0, V3_0))
+        assertEqualsV(
+            V3_0, observedAddedVelocity(
+                V3_0,
+                V3_0
+            ))
         assertEqualsV(EX * 0.5, observedAddedVelocity(V3_0, EX * 0.5))
-        assertEqualsV(EX, observedAddedVelocity(V3_0, EX))
+        assertEqualsV(
+            EX, observedAddedVelocity(
+                V3_0,
+                EX
+            ))
 
         // orthogonal
-        assertEqualsV(Vector3(0.5, 0.433, 0.0), observedAddedVelocity(EX * 0.5, EY * 0.5))
+        assertEqualsV(
+            Vector3(
+                0.5,
+                0.433,
+                0.0
+            ), observedAddedVelocity(EX * 0.5, EY * 0.5))
         // same dir
-        assertEqualsV(Vector3(0.8, 0.0, 0.0), observedAddedVelocity(EX * 0.5, EX * 0.5))
+        assertEqualsV(
+            Vector3(
+                0.8,
+                0.0,
+                0.0
+            ), observedAddedVelocity(EX * 0.5, EX * 0.5))
 
         // light speed
         // frame difference
-        assertThrows<IllegalArgumentException> { observedAddedVelocity(EX, V3_0) }
+        assertThrows<IllegalArgumentException> { observedAddedVelocity(
+            EX,
+            V3_0
+        ) }
         assertThrows<IllegalArgumentException> { observedAddedVelocity(EX, EX * 0.5) }
         // orthogonal
-        assertEqualsV(Vector3(0.5, sqrt(3.0 / 4.0), 0.0), observedAddedVelocity(EX * 0.5, EY))
+        assertEqualsV(
+            Vector3(
+                0.5,
+                sqrt(3.0 / 4.0),
+                0.0
+            ), observedAddedVelocity(EX * 0.5, EY))
         // same dir
-        assertEqualsV(EX, observedAddedVelocity(V3_0, EX))
+        assertEqualsV(
+            EX, observedAddedVelocity(
+                V3_0,
+                EX
+            ))
     }
 
 
     @Test
     fun testLorentzTransform() {
         // stationary frame
-        assertEqualsV(V4_0, lorentzTransform(V3_0, V4_0))
+        assertEqualsV(
+            V4_0, lorentzTransform(
+                V3_0,
+                V4_0
+            ))
         assertEqualsV(V3_0.to4(1.0), lorentzTransform(V3_0, V3_0.to4(1.0)))
         assertEqualsV(EX.to4(0.0), lorentzTransform(V3_0, EX.to4(0.0)))
         assertEqualsV(EY.to4(0.0), lorentzTransform(V3_0, EY.to4(0.0)))
         assertEqualsV(EZ.to4(0.0), lorentzTransform(V3_0, EZ.to4(0.0)))
-        assertEqualsV((EX + EY + EZ).to4(1.0), lorentzTransform(V3_0, (EX + EY + EZ).to4(1.0)))
+        assertEqualsV((EX + EY + EZ).to4(1.0), lorentzTransform(
+            V3_0, (EX + EY + EZ).to4(1.0)))
 
 
         // same dir
-        assertEqualsV(Vector4(-1 / sqrt(3.0), 2 / sqrt(3.0), 0.0, 0.0), lorentzTransform(EX * 0.5, EX.to4(0.0)))
-        assertEqualsV(Vector4(1 / sqrt(3.0), 1 / sqrt(3.0), 0.0, 0.0), lorentzTransform(EX * 0.5, EX.to4(1.0)))
+        assertEqualsV(
+            Vector4(-1 / sqrt(3.0), 2 / sqrt(3.0), 0.0, 0.0),
+            lorentzTransform(EX * 0.5, EX.to4(0.0))
+        )
+        assertEqualsV(
+            Vector4(1 / sqrt(3.0), 1 / sqrt(3.0), 0.0, 0.0),
+            lorentzTransform(EX * 0.5, EX.to4(1.0))
+        )
 
         // orthogonal
         assertEqualsV(EY.to4(0.0), lorentzTransform(EX * 0.5, EY.to4(0.0)))
-        assertEqualsV(Vector4(1 / sqrt(3.0), -0.5 / sqrt(3.0), 1.0, 0.0), lorentzTransform(EX * 0.5, EY.to4(0.5)))
-        assertEqualsV(Vector4(2 / sqrt(3.0), -1.0 / sqrt(3.0), 1.0, 0.0), lorentzTransform(EX * 0.5, EY.to4(1.0)))
+        assertEqualsV(
+            Vector4(1 / sqrt(3.0), -0.5 / sqrt(3.0), 1.0, 0.0),
+            lorentzTransform(EX * 0.5, EY.to4(0.5))
+        )
+        assertEqualsV(
+            Vector4(2 / sqrt(3.0), -1.0 / sqrt(3.0), 1.0, 0.0),
+            lorentzTransform(EX * 0.5, EY.to4(1.0))
+        )
     }
 
     @Test
@@ -93,19 +141,47 @@ class RelativisticMathTest {
     @Test
     fun testAccelerationProperAndCoordinateBase() {
         val veps = Vector3(Double.MIN_VALUE, 0.0, 0.0)
-        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(V3_0, 0.0, Frame(V4_0, V3_0)))
-        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(veps, 0.0, Frame(V4_0, V3_0)))
-        assertEqualsS(State(V4_0, V3_0, 0.0), relativisticCoordAcceleration(V3_0, 0.0, Frame(V4_0, veps)))
+        assertEqualsS(State(V4_0, V3_0, 0.0),
+            relativisticCoordAcceleration(
+                V3_0, 0.0, Frame(
+                    V4_0,
+                    V3_0
+                ))
+        )
+        assertEqualsS(State(V4_0, V3_0, 0.0),
+            relativisticCoordAcceleration(veps, 0.0, Frame(V4_0, V3_0))
+        )
+        assertEqualsS(State(V4_0, V3_0, 0.0),
+            relativisticCoordAcceleration(V3_0, 0.0, Frame(V4_0, veps))
+        )
         assertEqualsS(
             relativisticCoordAcceleration(V3_0, 1.0),
-            relativisticCoordAcceleration(V3_0, 1.0, Frame(V4_0, V3_0))
+            relativisticCoordAcceleration(
+                V3_0, 1.0, Frame(
+                    V4_0,
+                    V3_0
+                ))
         )
         assertEqualsS(
             relativisticCoordAcceleration(veps, 1.0),
-            relativisticCoordAcceleration(V3_0, 1.0, Frame(V4_0, V3_0))
+            relativisticCoordAcceleration(
+                V3_0, 1.0, Frame(
+                    V4_0,
+                    V3_0
+                ))
         )
-        assertEqualsS(relativisticCoordAcceleration(EX, 1.0), relativisticCoordAcceleration(EX, 1.0, Frame(V4_0, V3_0)))
-        assertEqualsS(relativisticCoordAcceleration(EX, 1.0), relativisticCoordAcceleration(EX, 1.0, Frame(V4_0, veps)))
+        assertEqualsS(
+            relativisticCoordAcceleration(EX, 1.0),
+            relativisticCoordAcceleration(
+                EX, 1.0, Frame(
+                    V4_0,
+                    V3_0
+                ))
+        )
+        assertEqualsS(
+            relativisticCoordAcceleration(EX, 1.0),
+            relativisticCoordAcceleration(EX, 1.0, Frame(V4_0, veps))
+        )
     }
 
     @Test
@@ -113,7 +189,11 @@ class RelativisticMathTest {
         val a = 0.5
         val t = 1.0
         val v = 0.5
-        val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EY * v)) // note EX and EY orthogonal directions
+        val s = relativisticCoordAcceleration(
+            EX * a,
+            t,
+            Frame(V4_0, EY * v)
+        ) // note EX and EY orthogonal directions
         assertEquals(1 / a * asinh(a * t / gamma(v)), s.tau)
         Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
     }
@@ -124,7 +204,11 @@ class RelativisticMathTest {
         val t = 1.0
         val v = 0.5
         val atg = a * t / gamma(v)
-        val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EX * v))  // note EX in both cases
+        val s = relativisticCoordAcceleration(
+            EX * a,
+            t,
+            Frame(V4_0, EX * v)
+        )  // note EX in both cases
         assertEquals(1 / a * asinh((v * (-sqrt(atg * atg + 2 * v * atg + 1) + 1) + atg) / (1 - v * v)), s.tau)
         Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
     }

@@ -1,5 +1,6 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.*
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -34,7 +35,8 @@ class TimeWarpTest {
 
         val s1 = State(EX.to4(0.0), V3_0, 0.0)
         val s2 = State(EY.to4(0.0), V3_0, 0.0)
-        val s3 = State((EX + EY).to4(0.0), V3_0, 0.0)
+        val s3 = State((EX + EY).to4(0.0),
+            V3_0, 0.0)
 
         // try lots of combinations
         for (state in setOf(s0, s1, s2, s3))
@@ -52,7 +54,7 @@ class TimeWarpTest {
     fun testSimulateTrivial() {
         val tw = TimeWarp()
         val world = tw.world
-        val o1 = TimeWarp.Obj("Test")
+        val o1 = Obj("Test")
         tw.addObj(o1, V3_0)
         o1.addMotion(TimeWarp.Inertial(0.0, 1.0))
 
@@ -66,8 +68,8 @@ class TimeWarpTest {
     fun testSimulateSimpleMove() {
         val tw = TimeWarp()
         val world = tw.world
-        val o1 = TimeWarp.Obj("Test")
-        tw.addObj(o1, V3_0, EX*0.5)
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0, EX *0.5)
 //        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
 
         tw.simulateTo(1.0)
@@ -79,8 +81,8 @@ class TimeWarpTest {
     fun testSimulateSimpleAbruptMove() {
         val tw = TimeWarp()
         val world = tw.world
-        val o1 = TimeWarp.Obj("Test")
-        tw.addObj(o1, V3_0, EX*0.5)
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0, EX *0.5)
 //        o1.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.5))
 
         tw.simulateTo(1.0)

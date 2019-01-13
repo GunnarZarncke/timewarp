@@ -1,5 +1,6 @@
-package de.zarncke.timewarp
+package de.zarncke.timewarp.math
 
+import de.zarncke.timewarp.*
 import java.lang.IllegalArgumentException
 import kotlin.math.*
 
@@ -117,7 +118,12 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
     val v = aAbs * t
     val tau = asinh(v) / aAbs
     val n = a0 * (1 / aAbs)
-    return State(Vector4(t, n * ((sqrt(1 + sqr(v)) - 1) / aAbs)), n * tanh(aAbs * tau), tau)
+    return State(
+        Vector4(
+            t,
+            n * ((sqrt(1 + sqr(v)) - 1) / aAbs)
+        ), n * tanh(aAbs * tau), tau
+    )
 }
 
 /**
@@ -175,7 +181,10 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
 fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
     val v = frame.v
     if (v == V3_0) return relativisticCoordAcceleration(a0, t)
-    if (a0 == V3_0) return lorentzTransform(v, V3_0.to4(t)).let { State(it, V3_0, it.t) }
+    if (a0 == V3_0) return lorentzTransform(
+        v,
+        V3_0.to4(t)
+    ).let { State(it, V3_0, it.t) }
     val aAbs = a0.abs()
     val na = a0 * (1 / aAbs)
     val vAbs = v.abs()
@@ -188,7 +197,8 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
     assert(wsqrt <= w + atg)
     val tau = asinh((-wsqrt + w + atg) / (1 - w * w)) / aAbs
 
-    return relativisticAcceleration(a0, tau).transform(frame, Frame.ORIGIN)
+    return relativisticAcceleration(a0, tau)
+        .transform(frame, Frame.ORIGIN)
 }
 
 inline fun sqr(x: Double) = x * x

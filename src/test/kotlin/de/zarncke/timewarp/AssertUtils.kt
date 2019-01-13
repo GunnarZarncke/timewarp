@@ -1,5 +1,7 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.Vector3
+import de.zarncke.timewarp.math.Vector4
 import org.junit.Assert
 import kotlin.test.fail
 
