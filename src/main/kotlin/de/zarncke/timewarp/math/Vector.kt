@@ -35,10 +35,3 @@ data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {
     constructor(t: Double, v3: Vector3) : this(t, v3.x, v3.y, v3.z)
 }
 
-data class Range(val from: Double, val to: Double) : Comparable<Range> {
-    override fun compareTo(other: Range) = comparator.compare(this, other)
-
-    companion object {
-        val comparator = compareBy(Range::from, Range::to)
-    }
-}

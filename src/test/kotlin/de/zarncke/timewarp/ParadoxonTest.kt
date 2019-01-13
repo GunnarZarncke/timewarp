@@ -12,12 +12,12 @@ class ParadoxonTest {
     fun testSimulateRocketClocks() {
         val tw = TimeWarp()
         val o1 = Obj("RocketBottom")
-        o1.addMotion(TimeWarp.LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
-        o1.addAction(TimeWarp.Sender("A", 0.0, 1.0))
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
+        o1.addAction(Sender("A", 0.0, 1.0))
         tw.addObj(o1, V3_0)
 
         val o2 = Obj("RocketTop")
-        o2.addMotion(TimeWarp.LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
         tw.addObj(o2, EX)
 
         val world = tw.simulateTo(10.0)
@@ -36,20 +36,20 @@ class ParadoxonTest {
     fun testRocketFitsThruSmallGap() {
         val tw = TimeWarp()
         val rL = Obj("RocketLeft")
-        rL.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.9))
-        tw.addObj(rL, V3_0)
+        tw.addObj(rL, V3_0, EX * 0.9)
         val rR = Obj("RocketRight")
-        rR.addMotion(TimeWarp.AbruptVelocityChange(0.0, EX * 0.9))
-        tw.addObj(rR, (EX * 2.0))
+        tw.addObj(rR, (EX * 2.0), EX * 0.9)
 
         val dA = Obj("DoorA")
+        dA.addAction(DetectCollision(0.0,10.0, setOf(rL,rR)))
         tw.addObj(dA, (EX * 4.0))
         val dB = Obj("DoorB")
+        dB.addAction(DetectCollision(0.0,10.0, setOf(rL,rR)))
         tw.addObj(dB, (EX * 5.0))
 
         val world = tw.simulateTo(10.0)
         val event = world.events[0]
-        assertEquals("A0", event.name)
+        assertEquals("DetectCollision", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
     }
 
@@ -60,9 +60,9 @@ class ParadoxonTest {
         tw.addObj(twinOld, V3_0)
 
         val twinYoung = Obj("TwinYoung")
-        twinYoung.addMotion(TimeWarp.LongitudinalAcceleration(0.0, 10.0, EX))
-        twinYoung.addAction(TimeWarp.DetectCollision(10.0, 20.0, setOf(twinOld)))
-        twinYoung.addMotion(TimeWarp.LongitudinalAcceleration(10.0, 20.0, EX * -1.0))
+        twinYoung.addMotion(LongitudinalAcceleration(0.0, 10.0, EX))
+        twinYoung.addAction(DetectCollision(10.0, 20.0, setOf(twinOld)))
+        twinYoung.addMotion(LongitudinalAcceleration(10.0, 20.0, EX * -1.0))
         tw.addObj(twinYoung, V3_0)
 
         val world = tw.simulateTo(10.0)

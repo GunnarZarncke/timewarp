@@ -1,7 +1,9 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.Range
 import java.lang.IllegalArgumentException
 import java.util.*
+import kotlin.Comparator
 
 /**
  * An Obj lives in a [World] where it moves via [Motion]s and acts via [Action]s.
@@ -18,7 +20,9 @@ class Obj(val name: String) {
     /**
      * Any overlapping number of actions can be specified, they just can't change the movement of the object.
      */
-    private val actions: TreeSet<Action> = TreeSet()
+    private val actions: TreeSet<Action> = TreeSet(object : Comparator<Action> {
+        override fun compare(o1: Action?, o2: Action?) = compareValues(o1?.range(), o2?.range())
+    })
 
     fun motions(): SortedMap<Double, Motion> = motions
     fun actions(): Set<Action> = actions
@@ -36,5 +40,9 @@ class Obj(val name: String) {
     fun addAction(action: Action) {
         if (action.tauEnd < action.tauStart) throw IllegalArgumentException()
         actions.add(action)
+    }
+
+    override fun toString(): String {
+        return "$name[$javaClass.simpleName]"
     }
 }

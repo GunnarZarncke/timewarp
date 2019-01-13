@@ -9,23 +9,22 @@ abstract class Motion(val tauStart: Double, val tauEnd: Double) {
      * This method will be called when the proper time of the associated object is greater or equal the motion start time.
      * It may be called multiple times with different values (or even the same value) for tauNow and tauTo (in corresponding reference frames).
      * @param obj in
-     * @param coMovingFrame co-moving with object at
-     * @param tauNow proper time of object (sometime during the motion) to
-     * @param tauTo proper time of object (may be *before* tauNow, but not before tauStart)
+     * @param tauNow proper time of co-moving object (sometime during the motion) to
+     * @param tauTo proper time of object (also during motion, but may be *before* tauNow)
      * @return state (4-vector and velocity of object at proper time tau within given frame)
      */
-    abstract fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State
+    abstract fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State
 
     // TODO check what happens with lateral acceleration, maybe this coMovingFrame thing is not yet well thought out
 
     /**
-     * Determines the state (location,  velocity proper time) of an object at a given <em>coordinate time</em> t within the given reference frame.
-     * @param obj at
-     * @param t coordinate time of object in
-     * @param coMovingFrame co-moving with object at time tauStart (!)
+     * Determines the state (location,  velocity proper time) of an object in the given reference frame
+     * at a given <em>coordinate time</em> in the world frame.
+     * @param coMovingFrame or the moving object at time tauStart (!)
+     * @param t coordinate time of object in world frame
      * @return state (4-vector and velocity and tau of object either at t or the end of the motion whatever is earlier)
      */
-    abstract fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State
+    abstract fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State
 
     override fun toString() = "${javaClass.simpleName}($tauStart-$tauEnd)"
 
@@ -35,16 +34,16 @@ abstract class Motion(val tauStart: Double, val tauEnd: Double) {
  * Inertial motion stays at the origin of its comoving reference frame.
  */
 open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd) {
-    override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
-        return State(V3_0.to4(tauTo - tauNow), V3_0, tauNow)
+    override fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+        return State(V3_0.to4(tauTo - tauNow), V3_0, tauTo)
     }
 
-    override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-        // t = tau for inertial motion
-        // see https://en.wikipedia.org/wiki/Proper_time
-        var dt = t
-        if (this.tauStart + dt > tauEnd) dt = tauEnd - tauStart
-        return State(V3_0.to4(dt), V3_0, this.tauStart + dt)
+    override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State {
+        val dt = t - coMovingFrame.r.t
+        assert(dt >= 0)
+        var tau = dt/gamma(coMovingFrame.v.abs())
+        if (this.tauStart + tau > tauEnd) tau = tauEnd - tauStart
+        return State(V3_0.to4(tau), V3_0, this.tauStart + tau).transform(coMovingFrame, Frame.ORIGIN)
     }
 }
 
@@ -53,13 +52,14 @@ open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd)
  * (we disregard that this requires unphysical infinite acceleration and assume that it is "a very short very strong acceleration")
  */
 class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
-    override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+    override fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
         assert(tauStart == tauNow)
+        assert(tauNow == tauTo)
         return State(V4_0, v, tauNow)
     }
 
-    override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-        return State(V4_0, v, tauStart)
+    override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State {
+        return State(V4_0, v, tauStart).transform(coMovingFrame, Frame.ORIGIN)
     }
 
     override fun toString() = "${super.toString()} v=$v"
@@ -71,16 +71,18 @@ class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart
  * https://en.wikipedia.org/wiki/Acceleration_(special_relativity)#Curved_world_lines
  */
 class LongitudinalAcceleration(tauStart: Double, tauEnd: Double, val a: Vector3) : Motion(tauStart, tauEnd) {
-    override fun moveUntilProperTime(obj: Obj, coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
+    override fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
         return relativisticAcceleration(a, tauTo - tauNow).copy(tau = tauTo)
     }
 
-    override fun moveUntilObserverTime(obj: Obj, coMovingFrame: Frame, t: Double): State {
-        val state = relativisticCoordAcceleration(a, t)
+    override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State {
+        val state = relativisticCoordAcceleration(a, t, coMovingFrame)
 
         if (this.tauStart + state.tau < tauEnd)
             return state.copy(tau = state.tau + tauStart)
-        return relativisticAcceleration(a, tauEnd - tauStart).copy(tau = tauEnd)
+
+        // if the determined proper time doesn't fall into the range return a state up to the end
+        return relativisticAcceleration(a, tauEnd - tauStart).copy(tau = tauEnd).transform(coMovingFrame, Frame.ORIGIN)
     }
 
     override fun toString() = "${super.toString()} a=$a"

@@ -1,5 +1,6 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.Range
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector4
 import kotlin.math.abs
@@ -56,10 +57,7 @@ abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
      */
     open fun act(world: TimeWarp.World, obj: Obj, tau: Double, changes: Changes) {}
 
-    /**
-     *
-     */
-    open fun always() = false
+    fun range() = Range(tauStart, tauEnd)
 }
 
 /**

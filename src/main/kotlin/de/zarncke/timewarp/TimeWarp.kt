@@ -105,22 +105,24 @@ class TimeWarp {
                     val tauNext = entry.key
                     // (create ad-hoc inertial motion if needed)
                     if (tauNext > state.tau) {
-                        val s = state.toMCRF()
+                        val mcrf = state.toMCRF()
                         state = Inertial(state.tau, tauNext)
-                            .moveUntilProperTime(obj, s, state.tau, tauNext).transform(s, world.origin)
+                            .moveUntilProperTime(mcrf, state.tau, tauNext)
+                            .transform(mcrf, world.origin)
                     }
 
                     val mcrf = state.toMCRF()
                     val tauStart = max(tauNext, state.tau)   // not sure this matches with state/frame
                     val tauEnd = min(entry.value.tauEnd, tauAction)
                     // calculate 4-vector (in world frame) of the object at tau
-                    state = entry.value.moveUntilProperTime(obj, mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
+                    state = entry.value.moveUntilProperTime(mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
                 }
                 // (we may need to create an inertial movement afterwards)
                 if (state.tau < tauAction) {
                     val mcrf = state.toMCRF()
                     state = Inertial(state.tau, tauAction)
-                        .moveUntilProperTime(obj, mcrf, state.tau, tauAction).transform(mcrf, world.origin)
+                        .moveUntilProperTime(mcrf, state.tau, tauAction)
+                        .transform(mcrf, world.origin)
                 }
                 // take the earliest of these 4-vectors call it r and its object o and action a
                 if (earliestState == null || earliestState.r.t < state.r.t) {
@@ -233,12 +235,12 @@ class TimeWarp {
         // execute motion of obj to target time
         //   set p = current position of obj
         //   set t = now
-        //   while t<r.t
-        //     take motion at current time, if there is none create inertial up the next one
-        //     calculate q and tau for r.t with current motion
-        //     if tau > next motion
-        //       set p = move to tau
-        //       set t = q.t
+        //   while t<target time
+        //     take next motion m (at current time t or later)
+        //     if m is not at current time create inertial up the next one and execute that one
+        //     calculate position q and tau for t with current motion m
+        //     if tau > end of motion m
+        //       calculate position p and t for end of motion
         //     else
         //       return q
         var state = objState
@@ -250,44 +252,30 @@ class TimeWarp {
             val tauNext = entry.key
             // (create ad-hoc inertial motion if needed)
             if (tauNext > state.tau) {
-                val mcrf = state.toMCRF()
-                val transformedCoordinateTime =
-                    state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
-                state = Inertial(state.tau, tauNext)
-                    .moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
-                    .transform(mcrf, worldFrame)
+                state = Inertial(state.tau, tauNext).moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
             }
 
             if (tauNext < state.tau) {
                 // (we need to undo motion back to its origin from where we can apply observer time)
                 val s = state.toMCRF()
-                state = entry.value.moveUntilProperTime(obj, s, state.tau, entry.key)
+                state = entry.value.moveUntilProperTime(s, state.tau, entry.key)
                     .transform(s, worldFrame)
+            } else {
+                if (world.logMotions)
+                    world.events.add(Event("Motion:${entry.value}", state.r, obj, obj))
             }
-            if (world.logMotions)
-                world.events.add(Event("Motion:${entry.value}", state.r, obj, obj))
-            val mcrf = state.toMCRF()
-            // TODO much unused transform included here, might simplify:
-            val transformedCoordinateTime =
-                state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
-            state = entry.value.moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
-                .transform(mcrf, worldFrame)
-            if (world.logMotions && state.tau == entry.value.tauEnd)
+            state = entry.value.moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
+            if (world.logMotions && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
                 world.events.add(Event("Motion-end:${entry.value}", state.r, obj, obj))
 
             objectCoordinateTime = state.r.t
         }
         // (we may need to create an inertial movement afterwards)
         if (objectCoordinateTime < evaluatedTime) {
-            val mcrf = state.toMCRF()
-            val transformedCoordinateTime =
-                state.copy(r = state.r.copy(t = evaluatedTime)).transform(worldFrame, mcrf).r.t
-            state = Inertial(state.tau, Double.POSITIVE_INFINITY)
-                .moveUntilObserverTime(obj, mcrf, transformedCoordinateTime)
-                .transform(mcrf, worldFrame)
+            state = Inertial(state.tau, Double.POSITIVE_INFINITY).moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
         }
 
-        assert(state.r.t == evaluatedTime)
+        assert(abs(state.r.t - evaluatedTime) < eps, { "${state.r.t}!=$evaluatedTime" })
         return state
     }
 
@@ -300,7 +288,6 @@ class TimeWarp {
         }
         return motions
     }
-
 
 
     data class Event(
