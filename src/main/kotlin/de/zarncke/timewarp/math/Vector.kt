@@ -22,7 +22,7 @@ data class Vector3(val x: Double, val y: Double, val z: Double) {
     fun dot(d: Vector3) = x * d.x + y * d.y + z * d.z
     fun cross(d: Vector3) =
         Vector3(y * d.z - z * d.y, z * d.x - x * d.z, x * d.y - y * d.x)
-    fun norm() = this*(1/this.abs())
+    fun unit() = this*(1/this.abs())
 }
 
 data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) {

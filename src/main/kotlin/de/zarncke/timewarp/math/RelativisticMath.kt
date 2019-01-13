@@ -179,12 +179,10 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double): State {
  * @return state (4-vector and velocity of the resulting position within the frame) in the origin frame
  */
 fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
+    val dt = t - frame.r.t
     val v = frame.v
-    if (v == V3_0) return relativisticCoordAcceleration(a0, t)
-    if (a0 == V3_0) return lorentzTransform(
-        v,
-        V3_0.to4(t)
-    ).let { State(it, V3_0, it.t) }
+    if (v == V3_0) return relativisticCoordAcceleration(a0, dt).transform(frame, Frame.ORIGIN) // starting inertial
+    if (a0 == V3_0) return lorentzTransform(v, V3_0.to4(dt)).let { State(it + frame.r, v, it.t) } // continue inertial
     val aAbs = a0.abs()
     val na = a0 * (1 / aAbs)
     val vAbs = v.abs()
@@ -192,13 +190,12 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
     val gamma = gamma(vAbs)
 
     val w = v.dot(na)
-    val atg = aAbs * t / gamma
+    val atg = aAbs * dt / gamma
     val wsqrt = w * sqrt(atg * atg + 2 * atg * w + 1)
     assert(wsqrt <= w + atg)
     val tau = asinh((-wsqrt + w + atg) / (1 - w * w)) / aAbs
 
-    return relativisticAcceleration(a0, tau)
-        .transform(frame, Frame.ORIGIN)
+    return relativisticAcceleration(a0, tau).transform(frame, Frame.ORIGIN)
 }
 
 inline fun sqr(x: Double) = x * x
