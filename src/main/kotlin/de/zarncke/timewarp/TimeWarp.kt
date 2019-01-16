@@ -68,6 +68,12 @@ class TimeWarp {
         world.set(obj, State(position.to4(world.now), velocity, 0.0))
     }
 
+    /*
+     * Ideas:
+     * - simulate up to proper time tau of an object
+     * - simulate up to the next/a specific event
+     */
+
     /**
      * Simulate world up to time t.
      * Determines all intermediate events of objects and calls [Obj.act] with a world updated to that time.

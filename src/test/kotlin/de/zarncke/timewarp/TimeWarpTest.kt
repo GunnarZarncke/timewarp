@@ -110,6 +110,29 @@ class TimeWarpTest {
     }
 
     @Test
+    fun testSimulateMoveAndTurn() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = Obj("Test")
+        val v = EX * 0.5
+        tw.addObj(o1, V3_0, v)
+        o1.addMotion(AbruptVelocityChange(1.0, -v))  // means we should be inertial with origin again
+        o1.addMotion(AbruptVelocityChange(2.0, -v))  // moving back
+        o1.addMotion(AbruptVelocityChange(3.0, v))  // home
+
+        tw.simulateTo(4.0)
+
+        assertEquals(3, world.events.size, "expects events at velocity changes")
+        println(world.events.joinToString(",\n"))
+
+        val gamma = gamma(0.5)
+        assertEqualsV((v * gamma).to4(gamma), world.events[0].position)
+        assertEqualsV((v * gamma).to4(gamma + 1), world.events[1].position)
+        assertEqualsV(V3_0.to4(2 * gamma + 1), world.events[2].position)
+        assertEqualsS(State(V3_0.to4(4.0), V3_0, 4.0 - (2 * gamma - 2)), world.stateInFrame(o1, world.origin))
+    }
+
+    @Test
     fun testSimulateAcceleration() {
         val tw = TimeWarp()
         val world = tw.world
@@ -120,18 +143,45 @@ class TimeWarpTest {
 
         tw.simulateTo(1.0)
         val s = relativisticCoordAcceleration(a, 1.0)
-        assertEquals(s, world.stateInFrame(o1, world.origin))
+        assertEqualsS(s, world.stateInFrame(o1, world.origin), "expect accelerated motion so far")
         assertEquals(1, world.events.size, "we didn't reach end of acceleration")
         assertEquals("Motion:LongitudinalAcceleration(0.0-1.0) a=Vector3(x=1.0, y=0.0, z=0.0)", world.events[0].name)
 
         tw.simulateTo(2.0)
-        val s2 = relativisticAcceleration(a, 1.0)
         println(world.events)
         assertEquals(2, world.events.size)
         assertStartsWith("Motion-end:LongitudinalAcceleration", world.events[1].name)
-        assertEqualsV(s2.r, world.events[1].position)
+        val s2 = relativisticAcceleration(a, 1.0)
+        assertEqualsV(s2.r, world.events[1].position, "expect an event at end of acceleration")
         assertEquals(2.0, world.stateInFrame(o1, world.origin).r.t)
         // we don't check the inertial movement after the acceleration here
     }
 
+    @Test
+    fun testSimulateAccelerateAndTurn() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = Obj("Test")
+        val a = EX
+        tw.addObj(o1, V3_0, V3_0)
+        o1.addMotion(LongitudinalAcceleration(0.0, 1.0, a)) // accelerate
+        o1.addMotion(LongitudinalAcceleration(1.0, 2.0, -a)) // decelerate until stop
+        o1.addMotion(LongitudinalAcceleration(2.0, 3.0, -a)) // accelerate other direction
+        o1.addMotion(LongitudinalAcceleration(3.0, 4.0, a)) // decelerate until back home
+
+        tw.simulateTo(5.0)
+
+        assertEquals(8, world.events.size, "expects 2 events per motion")
+        println(world.events.joinToString(",\n"))
+
+        val s = relativisticAcceleration(a, 1.0)
+        assertEqualsV(V4_0, world.events[0].position)
+        assertEqualsV(s.r, world.events[1].position)
+        assertEquals(world.events[1].position, world.events[2].position)
+        assertEqualsV((s.r.to3() * 2.0).to4(2 * s.r.t), world.events[3].position)
+        assertEquals(world.events[3].position, world.events[4].position)
+        assertEquals(world.events[5].position, world.events[6].position)
+        assertEqualsV(V3_0.to4(4 * s.r.t), world.events[7].position)
+        assertEqualsS(State(V3_0.to4(5.0), V3_0, 5.0 - 4 * (s.r.t - s.tau)), world.stateInFrame(o1, world.origin))
+    }
 }

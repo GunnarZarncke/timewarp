@@ -50,6 +50,8 @@ open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd)
 /**
  * Instantly (at tauStart) changes motion to given relative velocity relative to its comoving reference frame.
  * (we disregard that this requires unphysical infinite acceleration and assume that it is "a very short very strong acceleration")
+ * @param tauStart time of the velocity change
+ * @param v new velocity as measured in a reference frame prior to the velocity change
  */
 class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
     override fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
