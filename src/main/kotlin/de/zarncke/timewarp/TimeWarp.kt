@@ -5,6 +5,7 @@ import de.zarncke.timewarp.math.Vector3
 import de.zarncke.timewarp.math.Vector4
 import java.lang.IllegalArgumentException
 import java.util.*
+import java.util.logging.Logger
 import kotlin.math.*
 
 /**
@@ -12,7 +13,7 @@ import kotlin.math.*
  *
  * All computations with velocities (v) use units c=1.
  */
-class TimeWarp {
+class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name)){
 
 
     class World(
@@ -185,8 +186,12 @@ class TimeWarp {
                         }
                     } catch (e: Action.RetrySmallerStep) {
                         // stop, we went too far ahead
-                        evaluatedTime = (fallbackTime + evaluatedTime) / 2
-                        continue@time
+                        if (Math.abs(fallbackTime-evaluatedTime)<precision) {
+                            logger.warning("too high precision requirement for $earliestAction ($fallbackTime, $evaluatedTime)")
+                        }else{
+                            evaluatedTime = (fallbackTime + evaluatedTime) / 2
+                            continue@time
+                        }
                     }
                 }
 
@@ -194,7 +199,7 @@ class TimeWarp {
                 changes.applyChanges(worldNext)
 
                 world = worldNext
-                if (evaluatedTime == targetTime)
+                if (evaluatedTime >= targetTime)
                     break
                 fallbackTime = evaluatedTime
                 evaluatedTime = targetTime
@@ -213,8 +218,10 @@ class TimeWarp {
                                 Event(
                                     "Action-end:$earliestAction",
                                     earliestState.r,
-                                    earliestObj!!,
-                                    earliestObj
+                                    earliestObj,
+                                    earliestState.tau,
+                                    earliestObj,
+                                    earliestState.tau
                                 )
                             )
                     }
@@ -223,7 +230,7 @@ class TimeWarp {
                 world.completeActions.add(earliestAction)
 
             if (world.logActions)
-                world.events.add(Event("Action:$earliestAction", earliestState.r, earliestObj!!, earliestObj))
+                world.events.add(Event("Action:$earliestAction", earliestState.r, earliestObj!!, earliestState.tau, earliestObj,earliestState.tau))
         }
 
         return world
@@ -268,11 +275,11 @@ class TimeWarp {
                     .transform(s, worldFrame)
             } else {
                 if (world.logMotions)
-                    world.events.add(Event("Motion:${entry.value}", state.r, obj, obj))
+                    world.events.add(Event("Motion:${entry.value}", state.r, obj, state.tau, obj,state.tau))
             }
             state = entry.value.moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
             if (world.logMotions && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
-                world.events.add(Event("Motion-end:${entry.value}", state.r, obj, obj))
+                world.events.add(Event("Motion-end:${entry.value}", state.r, obj,state.tau, obj,state.tau))
 
             objectCoordinateTime = state.r.t
         }
@@ -300,13 +307,16 @@ class TimeWarp {
         val name: String,
         val position: Vector4,
         val sender: Obj,
-        val receiver: Obj
+        val tauSender: Double,
+        val receiver: Obj,
+        val tauReceiver: Double
     )
 
 }
 
 // TODO move into context object?
-var eps = 0.000001
+val eps = 0.000001
+val precision = eps
 
 /* Idea:
  * use Koma: mat[1.0,1.0,1.0].T*mat[1.0,1.0,1.0]

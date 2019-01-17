@@ -10,6 +10,14 @@ import kotlin.test.assertEquals
 class RelativisticMathTest {
 
     @Test
+    fun testSeparation() {
+        assertEquals(Separation.SPACELIKE, separation(V4_0, V3_0.to4(1.0)))
+        assertEquals(Separation.LIGHTLIKE, separation(V4_0, EX.to4(1.0)))
+        assertEquals(Separation.SPACELIKE, separation(V4_0, EX.to4(0.0)))
+
+    }
+
+    @Test
     fun testAddVelocity() {
         // stationary frame
         assertEqualsV(V3_0, observedAddedVelocity(V3_0, V3_0))

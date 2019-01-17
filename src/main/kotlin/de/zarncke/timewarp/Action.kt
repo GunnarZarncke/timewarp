@@ -1,8 +1,6 @@
 package de.zarncke.timewarp
 
-import de.zarncke.timewarp.math.Range
-import de.zarncke.timewarp.math.V3_0
-import de.zarncke.timewarp.math.Vector4
+import de.zarncke.timewarp.math.*
 import kotlin.math.abs
 
 /**
@@ -71,18 +69,18 @@ open class DetectCollision(tau: Double, val until: Double, val targets: Set<Obj>
     override fun act(world: TimeWarp.World, obj: Obj, tau: Double, changes: Changes) {
         val sourcePos = world.stateInFrame(obj, world.origin)
         for (target in targets - generated) {
-            val objPos = world.stateInFrame(target, world.origin)
-            val dr = (objPos.r.to3() - sourcePos.r.to3()).abs()
+            val targetPos = world.stateInFrame(target, world.origin)
+            val dr = (targetPos.r.to3() - sourcePos.r.to3()).abs()
             // TODO if dr is small compared to time step reduce time step
             if (dr < eps) {
-                collide(changes, objPos, obj, target)
+                collide(changes, obj, sourcePos, target, targetPos)
                 generated.add(target)
             } else if (dr > eps) generated.remove(target)
         }
     }
 
-    open fun collide(changes: Changes, objPos: State, self: Obj, obj: Obj) {
-        changes.events.add(TimeWarp.Event("collide", objPos.r, self, obj))
+    open fun collide(changes: Changes, self: Obj, selfPos: State, target: Obj, targetPos: State) {
+        changes.events.add(TimeWarp.Event("collide", selfPos.r, self, selfPos.tau, target, targetPos.tau))
     }
 }
 
@@ -104,19 +102,36 @@ class Sender(val name: String, val start: Double, val period: Double, val no: In
  * all objects that it reaches, creating an Event at the intercept 4-vector.
  */
 class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INFINITY) {
-    private val generated = mutableSetOf<Obj>()
+    private val impossible = mutableSetOf<Obj>()
+    private val tracked = mutableSetOf<Obj>()
+
     override fun act(world: TimeWarp.World, obj: Obj, tau: Double, changes: Changes) {
         // note: sourcePos.t is transformed start tau
         // and objPos.t is transformed now tau
-        val sourcePos = world.stateInFrame(obj, world.origin).r
-        for (other in world.objects - generated) {
-            val objPos = world.stateInFrame(other, world.origin).r
-            val dr = (objPos.to3() - sourcePos.to3()).abs()
-            val dt = objPos.t - sourcePos.t
-            if (abs(dr - dt) < eps) {
-                changes.events.add(TimeWarp.Event(name, objPos, obj, other))
-                generated.add(other)
-            } else if (dr > dt) throw RetrySmallerStep()
+        val sourcePos = world.stateInFrame(obj, world.origin)
+
+        for (newObj in world.objects - impossible - tracked) {
+            val newObjPos = world.stateInFrame(newObj, world.origin)
+            when (separation(newObjPos.r, sourcePos.r, eps)) {
+                Separation.TIMELIKE -> impossible.add(newObj)
+                Separation.LIGHTLIKE -> {// immediate hit
+                    changes.events.add(TimeWarp.Event(name, newObjPos.r, obj, sourcePos.tau, newObj, newObjPos.tau))
+                    impossible.add(newObj)
+                }
+                Separation.SPACELIKE -> tracked.add(newObj)
+            }
+        }
+        for (other in tracked) {
+            val otherPos = world.stateInFrame(other, world.origin)
+            when (separation(otherPos.r, sourcePos.r, eps)) {
+                Separation.TIMELIKE -> throw RetrySmallerStep() // overshot
+                Separation.LIGHTLIKE -> {
+                    changes.events.add(TimeWarp.Event(name, otherPos.r, obj, sourcePos.tau, other, otherPos.tau))
+                    tracked.remove(other)
+                    impossible.add(other)
+                }
+                Separation.SPACELIKE -> Unit // wait
+            }
         }
     }
 }

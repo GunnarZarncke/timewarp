@@ -4,6 +4,20 @@ import de.zarncke.timewarp.*
 import java.lang.IllegalArgumentException
 import kotlin.math.*
 
+enum class Separation {
+    TIMELIKE,
+    LIGHTLIKE,
+    SPACELIKE
+}
+
+fun separation(a: Vector4, b: Vector4, eps: Double = 0.0) =
+    (a.to3() - b.to3()).abs().let { dr ->
+        abs(a.t - a.t).let { dt ->
+            if (dt > dr) Separation.TIMELIKE
+            else if (abs(dt - dr) <= eps) Separation.LIGHTLIKE
+            else Separation.SPACELIKE
+        }
+    }
 
 /**
  * The gamma function calculates the relativistic Lorentz factor for a velocity.

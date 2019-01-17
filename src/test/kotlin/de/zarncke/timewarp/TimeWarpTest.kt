@@ -184,4 +184,20 @@ class TimeWarpTest {
         assertEqualsV(V3_0.to4(4 * s.r.t), world.events[7].position)
         assertEqualsS(State(V3_0.to4(5.0), V3_0, 5.0 - 4 * (s.r.t - s.tau)), world.stateInFrame(o1, world.origin))
     }
+
+    @Test
+    fun testSimulateSimpleAction() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = Obj("Test")
+        val v = EX * 0.5
+        tw.addObj(o1, V3_0, v)
+        o1.addAction(object : Action(0.5, 0.5) {})
+
+        tw.simulateTo(1.0)
+        println(world.events)
+        assertEquals(V3_0.to4(0.5), world.events[0].position)
+        assertEquals("", world.events[0].name)
+        assertEquals(State(v.to4(1.0), V3_0, 1.0), world.stateInFrame(o1, world.origin))
+    }
 }
