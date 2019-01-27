@@ -60,13 +60,13 @@ class TimeWarpTest {
         tw.addObj(o1, V3_0)
         o1.addMotion(Inertial(0.0, 1.0))
 
-        assertEquals(State(V4_0, V3_0, 0.0), world.stateInFrame(o1, world.origin))
+        assertEquals(State(V4_0, V3_0, 0.0), world.stateInFrame(o1))
         tw.simulateTo(1.0)
         println(world.events)
         assertEquals(2, world.events.size)
         assertEquals("Motion:Inertial(0.0-1.0)", world.events[0].name)
         assertEquals("Motion-end:Inertial(0.0-1.0)", world.events[1].name)
-        assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1, world.origin))
+        assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1))
     }
 
     @Test
@@ -78,7 +78,7 @@ class TimeWarpTest {
 
         tw.simulateTo(1.0)
         assertEquals(0, world.events.size, "implied motions is not recorded")
-        assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1, world.origin))
+        assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1))
     }
 
     @Test
@@ -91,7 +91,7 @@ class TimeWarpTest {
 
         tw.simulateTo(1.0)
         println(world.events)
-        assertEquals(State(v.to4(1.0), v, 1.0 / gamma(0.5)), world.stateInFrame(o1, world.origin))
+        assertEquals(State(v.to4(1.0), v, 1.0 / gamma(0.5)), world.stateInFrame(o1))
     }
 
     @Test
@@ -106,7 +106,7 @@ class TimeWarpTest {
         tw.simulateTo(1.0)
         assertEquals(1, world.events.size, "zero time moves record only one event")
         println(world.events)
-        assertEquals(State(v.to4(1.0), v, 1.0 / gamma(0.5)), world.stateInFrame(o1, world.origin))
+        assertEquals(State(v.to4(1.0), v, 1.0 / gamma(0.5)), world.stateInFrame(o1))
     }
 
     @Test
@@ -129,7 +129,7 @@ class TimeWarpTest {
         assertEqualsV((v * gamma).to4(gamma), world.events[0].position)
         assertEqualsV((v * gamma).to4(gamma + 1), world.events[1].position)
         assertEqualsV(V3_0.to4(2 * gamma + 1), world.events[2].position)
-        assertEqualsS(State(V3_0.to4(4.0), V3_0, 4.0 - (2 * gamma - 2)), world.stateInFrame(o1, world.origin))
+        assertEqualsS(State(V3_0.to4(4.0), V3_0, 4.0 - (2 * gamma - 2)), world.stateInFrame(o1))
     }
 
     @Test
@@ -143,7 +143,7 @@ class TimeWarpTest {
 
         tw.simulateTo(1.0)
         val s = relativisticCoordAcceleration(a, 1.0)
-        assertEqualsS(s, world.stateInFrame(o1, world.origin), "expect accelerated motion so far")
+        assertEqualsS(s, world.stateInFrame(o1), "expect accelerated motion so far")
         assertEquals(1, world.events.size, "we didn't reach end of acceleration")
         assertEquals("Motion:LongitudinalAcceleration(0.0-1.0) a=Vector3(x=1.0, y=0.0, z=0.0)", world.events[0].name)
 
@@ -153,7 +153,7 @@ class TimeWarpTest {
         assertStartsWith("Motion-end:LongitudinalAcceleration", world.events[1].name)
         val s2 = relativisticAcceleration(a, 1.0)
         assertEqualsV(s2.r, world.events[1].position, "expect an event at end of acceleration")
-        assertEquals(2.0, world.stateInFrame(o1, world.origin).r.t)
+        assertEquals(2.0, world.stateInFrame(o1).r.t)
         // we don't check the inertial movement after the acceleration here
     }
 
@@ -182,7 +182,7 @@ class TimeWarpTest {
         assertEquals(world.events[3].position, world.events[4].position)
         assertEquals(world.events[5].position, world.events[6].position)
         assertEqualsV(V3_0.to4(4 * s.r.t), world.events[7].position)
-        assertEqualsS(State(V3_0.to4(5.0), V3_0, 5.0 - 4 * (s.r.t - s.tau)), world.stateInFrame(o1, world.origin))
+        assertEqualsS(State(V3_0.to4(5.0), V3_0, 5.0 - 4 * (s.r.t - s.tau)), world.stateInFrame(o1))
     }
 
     @Test
@@ -198,6 +198,36 @@ class TimeWarpTest {
         println(world.events)
         assertEquals(V3_0.to4(0.5), world.events[0].position)
         assertEquals("", world.events[0].name)
-        assertEquals(State(v.to4(1.0), V3_0, 1.0), world.stateInFrame(o1, world.origin))
+        assertEquals(State(v.to4(1.0), v, 1.0), world.stateInFrame(o1))
+    }
+
+    @Test
+    fun testSimulateActionCreateObject() {
+        val tw = TimeWarp()
+        val world = tw.world
+        val o1 = Obj("Test")
+        var o2: Obj? = null
+        tw.addObj(o1, V3_0)
+        val v = EX * 0.5
+        o1.addAction(object : Action(0.5, 0.5) {
+            override fun act(world: TimeWarp.WorldView, obj: Obj, tau: Double, changes: Changes) {
+                o2 = changes.cloneObj(world, obj, "Spawned", v, 0.0)
+                //changes.actions.add(obj to Pulse("pulse:$name-$no", start))
+            }
+        })
+
+        tw.simulateTo(1.0)
+        println(world.events.joinToString("\n"))
+        // events at t=0.5
+        assertEquals(V3_0.to4(0.5), world.events[0].position)
+        assertEquals("Clone", world.events[1].name)
+        assertEquals(V3_0.to4(0.5), world.events[1].position)
+
+        assertEquals("Motion", world.events[2].name)
+        assertEquals((v * 0.5 * gamma(v)).to4(0.5 + 0.5 * gamma(v)), world.events[2].position)
+        assertEquals(0.5, world.events[1].tauReceiver)
+        // state at t=1.0
+        assertEquals(State(V3_0.to4(1.0), v, 1.0), world.stateInFrame(o1))
+        assertEquals(State((v * 0.5).to4(1.0), V3_0, 1.0), world.stateInFrame(o2!!))
     }
 }

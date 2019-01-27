@@ -12,7 +12,7 @@ enum class Separation {
 
 fun separation(a: Vector4, b: Vector4, eps: Double = 0.0) =
     (a.to3() - b.to3()).abs().let { dr ->
-        abs(a.t - a.t).let { dt ->
+        abs(a.t - b.t).let { dt ->
             if (dt > dr) Separation.TIMELIKE
             else if (abs(dt - dr) <= eps) Separation.LIGHTLIKE
             else Separation.SPACELIKE
@@ -25,6 +25,7 @@ fun separation(a: Vector4, b: Vector4, eps: Double = 0.0) =
  * @return lorentzFactor
  */
 fun gamma(v: Double) = 1 / sqrt(1 - v * v)
+fun gamma(v: Vector3) = gamma(v.abs())
 
 /**
  * ...u as velocity of a body within a Lorentz frame S, and v as velocity of a second frame S′, as measured in S,

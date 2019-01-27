@@ -11,7 +11,7 @@ class RelativisticMathTest {
 
     @Test
     fun testSeparation() {
-        assertEquals(Separation.SPACELIKE, separation(V4_0, V3_0.to4(1.0)))
+        assertEquals(Separation.TIMELIKE, separation(V4_0, V3_0.to4(1.0)))
         assertEquals(Separation.LIGHTLIKE, separation(V4_0, EX.to4(1.0)))
         assertEquals(Separation.SPACELIKE, separation(V4_0, EX.to4(0.0)))
 

@@ -2,7 +2,6 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
-import de.zarncke.timewarp.math.Vector4
 import java.lang.IllegalArgumentException
 import java.util.*
 import java.util.logging.Logger
@@ -13,50 +12,7 @@ import kotlin.math.*
  *
  * All computations with velocities (v) use units c=1.
  */
-class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name)){
-
-
-    class World(
-        var now: Double = 0.0,
-        val objects: MutableList<Obj> = mutableListOf(),
-        val completeActions: MutableSet<Action> = mutableSetOf(),
-        val activeActions: MutableMap<Action, Obj> = mutableMapOf(),
-        val events: MutableList<Event> = mutableListOf(),
-        val states: MutableMap<Obj, State> = mutableMapOf()
-    ) {
-        var origin = Frame.ORIGIN
-        var logActions = true
-        var logMotions = true
-
-        fun addObj(obj: Obj) {
-            objects.add(obj)
-        }
-
-        fun comovingFrame(obj: Obj) =
-            (states[obj] ?: throw IllegalArgumentException("unknown object $obj"))
-                .let { Frame(it.r, it.v) }
-
-        /**
-         * @param obj to get position and velocity for (at current time t in world frame)
-         * @param s frame to get state in
-         * @return state (position and velocity) in the given frame
-         */
-        fun stateInFrame(obj: Obj, s: Frame) =
-            (states[obj] ?: throw IllegalArgumentException("unknown object $obj")).transform(origin, s)
-
-        fun set(obj: Obj, state: State) {
-            states[obj] = state
-        }
-
-        fun copy() = World(
-            now,
-            objects.toMutableList(),
-            completeActions.toMutableSet(),
-            activeActions.toMutableMap(),
-            events.toMutableList(),
-            states.toMutableMap()
-        )
-    }
+class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass.name)) {
 
     var world = World()
     val formula = Formula()
@@ -64,9 +20,8 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
     fun init() {
     }
 
-    fun addObj(obj: Obj, position: Vector3, velocity: Vector3 = V3_0) {
-        world.addObj(obj)
-        world.set(obj, State(position.to4(world.now), velocity, 0.0))
+    fun addObj(obj: Obj, r: Vector3, v: Vector3 = V3_0, tau: Double = 0.0) {
+        world.addObj(obj, r, v, tau)
     }
 
     /*
@@ -98,7 +53,7 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
             for (obj in world.objects) {
                 // among unhandled actions not earlier than now
                 val nextAction =
-                    obj.actions().filter { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }.firstOrNull()
+                    obj.actions().first { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }
                         ?: continue
                 //  determine proper time tau of first scheduled action
                 var state = world.states[obj]!!
@@ -139,6 +94,8 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                 }
             }
 
+            // now we have determined the earliest applicable action of an object and its state, but no change yet
+
             if (earliestAction == null) {
                 // (no further actions; we continue motion directly to the end state)
                 for (obj in world.objects) {
@@ -149,7 +106,8 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                 break;
             }
 
-            // extra handling for reduced time steps
+
+            // note: loop is extra handling for reduced time steps
             val targetTime = earliestState!!.r.t
             var fallbackTime = world.now
             var evaluatedTime = targetTime
@@ -167,16 +125,20 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                         worldNext.set(obj, earliestState)
                         continue
                     }
-                    val state = executeMotionToCoordinateTime(world.origin, world.states[obj]!!, obj, evaluatedTime)
+                    val state =
+                        executeMotionToCoordinateTime(worldNext.origin, worldNext.states[obj]!!, obj, evaluatedTime)
 
                     worldNext.set(obj, state)
                 }
 
-                val changes = Action.Changes()
-                for ((action, obj) in world.activeActions + (earliestAction to earliestObj!!)) {
+                worldNext.now = evaluatedTime
+                // now we have initialized the candidate future world to the time of a potential or real event
 
-                    // execute action a on o with the world and tau_o as parameter (may update events)
-                    // execute all other active actions
+                // execute action a on o with the world and tau_o as parameter (may update events)
+                // and execute all other active actions
+                val changes = Changes()
+                for ((action, obj) in worldNext.activeActions + (earliestAction to earliestObj!!)) {
+
                     try {
                         if (action == earliestAction)
                             earliestAction.act(worldNext, earliestObj, earliestState.tau, changes)
@@ -186,9 +148,9 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                         }
                     } catch (e: Action.RetrySmallerStep) {
                         // stop, we went too far ahead
-                        if (Math.abs(fallbackTime-evaluatedTime)<precision) {
+                        if (Math.abs(fallbackTime - evaluatedTime) < precision) {
                             logger.warning("too high precision requirement for $earliestAction ($fallbackTime, $evaluatedTime)")
-                        }else{
+                        } else {
                             evaluatedTime = (fallbackTime + evaluatedTime) / 2
                             continue@time
                         }
@@ -208,20 +170,19 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
             // mark action a as done
             if (earliestAction.tauEnd != earliestAction.tauStart) {
                 world.activeActions.put(earliestAction, earliestObj!!)
-                // add an action that a) causes an call to act() at the end, b) completes the action in the world
+                // add an action that a) causes a call to act() at the end, b) completes the action in the world
                 earliestObj.addAction(object : Action(earliestAction.tauEnd, earliestAction.tauEnd) {
-                    override fun act(world: World, obj: Obj, tau: Double, changes: Changes) {
-                        world.completeActions.add(earliestAction)
-                        world.activeActions.remove(earliestAction)
+                    override fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
+                        changes.completions.add(earliestAction)
                         if (world.logActions)
-                            world.events.add(
+                            changes.events.add(
                                 Event(
                                     "Action-end:$earliestAction",
                                     earliestState.r,
                                     earliestObj,
                                     earliestState.tau,
-                                    earliestObj,
-                                    earliestState.tau
+                                    obj,
+                                    tau
                                 )
                             )
                     }
@@ -230,7 +191,16 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                 world.completeActions.add(earliestAction)
 
             if (world.logActions)
-                world.events.add(Event("Action:$earliestAction", earliestState.r, earliestObj!!, earliestState.tau, earliestObj,earliestState.tau))
+                world.events.add(
+                    Event(
+                        "Action:$earliestAction",
+                        earliestState.r,
+                        earliestObj!!,
+                        earliestState.tau,
+                        earliestObj,
+                        earliestState.tau
+                    )
+                )
         }
 
         return world
@@ -257,7 +227,8 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
         //     else
         //       return q
         var state = objState
-        assert(state.r.t == world.now)
+        if (state.r.t != world.now)
+            assert(false)
         var objectCoordinateTime = state.r.t
         val motions = getMotionsInRange(obj, state.tau, Double.POSITIVE_INFINITY).entries.toMutableList()
         while (objectCoordinateTime < evaluatedTime && !motions.isEmpty()) {
@@ -275,11 +246,29 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
                     .transform(s, worldFrame)
             } else {
                 if (world.logMotions)
-                    world.events.add(Event("Motion:${entry.value}", state.r, obj, state.tau, obj,state.tau))
+                    world.events.add(
+                        Event(
+                            "Motion:${entry.value}",
+                            state.r,
+                            obj,
+                            state.tau,
+                            obj,
+                            state.tau
+                        )
+                    )
             }
             state = entry.value.moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
             if (world.logMotions && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
-                world.events.add(Event("Motion-end:${entry.value}", state.r, obj,state.tau, obj,state.tau))
+                world.events.add(
+                    Event(
+                        "Motion-end:${entry.value}",
+                        state.r,
+                        obj,
+                        state.tau,
+                        obj,
+                        state.tau
+                    )
+                )
 
             objectCoordinateTime = state.r.t
         }
@@ -303,14 +292,7 @@ class TimeWarp (val logger :Logger = Logger.getLogger(TimeWarp::javaClass.name))
     }
 
 
-    data class Event(
-        val name: String,
-        val position: Vector4,
-        val sender: Obj,
-        val tauSender: Double,
-        val receiver: Obj,
-        val tauReceiver: Double
-    )
+    override fun toString() = "simulate $world"
 
 }
 
