@@ -5,15 +5,67 @@ import de.zarncke.timewarp.math.Vector3
 import java.lang.IllegalArgumentException
 
 interface WorldView {
+    fun addEvent(e: Event)
+    fun addAction(obj: Obj, action: Action)
+    fun addMotion(obj: Obj, motion: Motion)
+    fun addOrSetObject(obj: Obj, state: State)
+    fun complete(action: Action)
+
     /**
      * @param obj to get position and velocity for (at current time t in world frame)
      * @param frame frame to get state in
      * @return state (position and velocity) in the given frame
      */
     fun stateInFrame(obj: Obj, frame: Frame = origin): State
+
     val origin: Frame
     val objects: List<Obj>
     val logActions: Boolean
+}
+
+class DeltaWorld(private val base: World, private val space: Space, val now: Double) : WorldView by base {
+    private val changes = Changes()
+
+    fun applyAll(): World {
+        val newWorld = base.copyWith(space, now)
+        changes.applyChanges(newWorld)
+        return newWorld
+    }
+
+    override fun addEvent(e: Event) {
+        changes.events.add(e)
+    }
+
+    override fun addAction(obj: Obj, action: Action) {
+        changes.actions.add(obj to action)
+    }
+
+    override fun addMotion(obj: Obj, motion: Motion) {
+        changes.motions.add(obj to motion)
+    }
+
+    override fun addOrSetObject(obj: Obj, state: State) {
+        changes.objects.add(obj to state)
+    }
+
+    override fun complete(action: Action) {
+        changes.completions.add(action)
+    }
+}
+
+class Space(val states: MutableMap<Obj, State> = mutableMapOf()) {
+    fun comovingFrame(obj: Obj) =
+        state(obj).let { Frame(it.r, it.v) }
+
+    fun set(obj: Obj, state: State) {
+        states[obj] = state
+    }
+
+    fun state(obj: Obj) =
+        (states[obj] ?: throw IllegalArgumentException("unknown object $obj"))
+
+    fun copy() = Space(states.toMutableMap())
+
 }
 
 class World(
@@ -22,11 +74,35 @@ class World(
     val completeActions: MutableSet<Action> = mutableSetOf(),
     val activeActions: MutableMap<Action, Obj> = mutableMapOf(),
     val events: MutableList<Event> = mutableListOf(),
-    val states: MutableMap<Obj, State> = mutableMapOf()
+    val space: Space = Space()
 ) : WorldView {
     override var origin = Frame.ORIGIN
     override var logActions = true
     var logMotions = true
+
+    override fun stateInFrame(obj: Obj, frame: Frame) =
+        space.state(obj).transform(origin, frame)
+
+    override fun addEvent(e: Event) {
+        events.add(e)
+    }
+
+    override fun addAction(obj: Obj, action: Action) {
+        obj.addAction(action)
+    }
+
+    override fun addMotion(obj: Obj, motion: Motion) {
+        obj.addMotion(motion)
+    }
+
+    override fun addOrSetObject(obj: Obj, state: State) {
+        objects.add(obj)
+        space.set(obj, state)
+    }
+
+    override fun complete(action: Action) {
+        completeActions.add(action)
+    }
 
     /**
      * @param obj to add at
@@ -36,32 +112,20 @@ class World(
      */
     fun addObj(obj: Obj, r: Vector3 = V3_0, v: Vector3 = V3_0, tau: Double = 0.0) {
         objects.add(obj)
-        set(obj, State(r.to4(now), v, tau))
+        space.set(obj, State(r.to4(now), v, tau))
     }
 
-    fun comovingFrame(obj: Obj) =
-        (states[obj] ?: throw IllegalArgumentException("unknown object $obj"))
-            .let { Frame(it.r, it.v) }
-
-    override fun stateInFrame(obj: Obj, frame: Frame) =
-        (states[obj] ?: throw IllegalArgumentException("unknown object $obj")).transform(origin, frame)
-
-    fun set(obj: Obj, state: State) {
-        states[obj] = state
-    }
-
-    fun copy() = World(
-        now,
+    fun copyWith(newSpace: Space, newNow: Double) = World(
+        newNow,
         objects.toMutableList(),
         completeActions.toMutableSet(),
         activeActions.toMutableMap(),
         events.toMutableList(),
-        states.toMutableMap()
+        newSpace
     )
 
     override fun toString() = "time=$now ${objects.size} objects ${events.size} events"
 }
-
 
 
 data class Changes(
@@ -71,29 +135,6 @@ data class Changes(
     val objects: MutableSet<Pair<Obj, State>> = mutableSetOf(),
     val events: MutableSet<Event> = mutableSetOf()
 ) {
-    /**
-     * Clone the given object, i.e. adding an object with the same state. Optionally modifying it.
-     * @param obj to clone
-     * @param name to use (defaulting to name plus "Clone"
-     * @param vRelative relative velocity to given object (defaulting to zero, i.e. same velocity)
-     * @param tau proper clock time of clone, null meaning same time as obj which is the default.
-     * @return the clone object
-     */
-    fun cloneObj(
-        world: WorldView,
-        obj: Obj,
-        name: String = obj.name + "Clone",
-        vRelative: Vector3 = V3_0,
-        tau: Double? = null
-    ): Obj {
-        val clone = Obj(name)
-        val state = world.stateInFrame(obj)
-        val tauClone = tau ?: state.tau
-        objects.add(clone to State(state.r, state.v + vRelative, tauClone))
-        events.add(Event("Clone", state.r, obj, state.tau, clone, tauClone))
-        return clone
-    }
-
     fun applyChanges(world: World) {
         for (entry in actions) {
             entry.first.addAction(entry.second)
@@ -104,7 +145,7 @@ data class Changes(
         for (entry in objects) {
             world.addObj(entry.first)
             assert(entry.second.r.t == world.now)
-            world.set(entry.first, entry.second)
+            world.addOrSetObject(entry.first, entry.second)
         }
         for (entry in completions) {
             world.completeActions.add(entry)
@@ -113,3 +154,26 @@ data class Changes(
         world.events.addAll(events)
     }
 }
+
+/**
+ * Clone the given object, i.e. adding an object with the same state. Optionally modifying it.
+ * @param obj to clone
+ * @param name to use (defaulting to name plus "Clone"
+ * @param vRelative relative velocity to given object (defaulting to zero, i.e. same velocity)
+ * @param tau proper clock time of clone, null meaning same time as obj which is the default.
+ * @return the clone object
+ */
+fun WorldView.cloneObj(
+    obj: Obj,
+    name: String = obj.name + "Clone",
+    vRelative: Vector3 = V3_0,
+    tau: Double? = null
+): Obj {
+    val clone = Obj(name)
+    val state = stateInFrame(obj)
+    val tauClone = tau ?: state.tau
+    addOrSetObject(clone, State(state.r, state.v + vRelative, tauClone))
+    addEvent(Event("Clone", state.r, obj, state.tau, clone, tauClone))
+    return clone
+}
+

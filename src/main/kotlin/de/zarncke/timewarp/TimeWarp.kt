@@ -15,10 +15,6 @@ import kotlin.math.*
 class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass.name)) {
 
     var world = World()
-    val formula = Formula()
-
-    fun init() {
-    }
 
     fun addObj(obj: Obj, r: Vector3, v: Vector3 = V3_0, tau: Double = 0.0) {
         world.addObj(obj, r, v, tau)
@@ -32,7 +28,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 
     /**
      * Simulate world up to time t.
-     * Determines all intermediate events of objects and calls [Obj.act] with a world updated to that time.
+     * Determines all intermediate events of objects and calls [Action.act] with a world updated to that time.
      * @param t coordinate time in world frame ('origin')
      * @return World at coordinate time t
      */
@@ -53,10 +49,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             for (obj in world.objects) {
                 // among unhandled actions not earlier than now
                 val nextAction =
-                    obj.actions().first { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }
+                    obj.actions().firstOrNull { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }
                         ?: continue
                 //  determine proper time tau of first scheduled action
-                var state = world.states[obj]!!
+                var state = world.stateInFrame(obj)
                 val tauAction = nextAction.tauStart
 
                 // determine all scheduled motions up to that event (might require creation of ad-hoc inertial moves)
@@ -97,13 +93,13 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             // now we have determined the earliest applicable action of an object and its state, but no change yet
 
             if (earliestAction == null) {
-                // (no further actions; we continue motion directly to the end state)
+                // (no further actions; we continue motion directly to the end state and update world directly)
                 for (obj in world.objects) {
-                    val state = executeMotionToCoordinateTime(world.origin, world.states[obj]!!, obj, t)
-                    world.set(obj, state)
+                    val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, t)
+                    world.space.set(obj, state)
                 }
                 world.now = t
-                break;
+                break
             }
 
 
@@ -111,40 +107,39 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             val targetTime = earliestState!!.r.t
             var fallbackTime = world.now
             var evaluatedTime = targetTime
-            time@
-            while (true) {
+
+            time@ while (true) {
                 // create a candidate world - we might need to backtrack
-                val worldNext = world.copy()
+                val space = Space()
 
                 // for each object
                 //   execute motion to r (see below) determining tau_o
                 //   update the object in the world to it's 4-vector
-                for (obj in worldNext.objects) {
+                for (obj in world.objects) {
                     if (obj == earliestObj) {
                         // for the earliest action we know the state and take a shortcut
-                        worldNext.set(obj, earliestState)
+                        space.set(obj, earliestState)
                         continue
                     }
                     val state =
-                        executeMotionToCoordinateTime(worldNext.origin, worldNext.states[obj]!!, obj, evaluatedTime)
+                        executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, evaluatedTime)
 
-                    worldNext.set(obj, state)
+                    space.set(obj, state)
                 }
 
-                worldNext.now = evaluatedTime
+                val worldNext = DeltaWorld(world, space, evaluatedTime)
                 // now we have initialized the candidate future world to the time of a potential or real event
 
                 // execute action a on o with the world and tau_o as parameter (may update events)
                 // and execute all other active actions
-                val changes = Changes()
-                for ((action, obj) in worldNext.activeActions + (earliestAction to earliestObj!!)) {
+                for ((action, obj) in world.activeActions + (earliestAction to earliestObj!!)) {
 
                     try {
                         if (action == earliestAction)
-                            earliestAction.act(worldNext, earliestObj, earliestState.tau, changes)
+                            earliestAction.act(worldNext, earliestObj, earliestState.tau)
                         else {
-                            val objState = worldNext.states[obj]!!
-                            action.act(worldNext, obj, objState.tau, changes)
+                            val objState = worldNext.stateInFrame(obj)
+                            action.act(worldNext, obj, objState.tau)
                         }
                     } catch (e: Action.RetrySmallerStep) {
                         // stop, we went too far ahead
@@ -158,9 +153,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 }
 
                 // (we successfully executed all actions for the evaluated time and can update the world to it)
-                changes.applyChanges(worldNext)
+                world = worldNext.applyAll()
 
-                world = worldNext
                 if (evaluatedTime >= targetTime)
                     break
                 fallbackTime = evaluatedTime
@@ -169,13 +163,13 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 
             // mark action a as done
             if (earliestAction.tauEnd != earliestAction.tauStart) {
-                world.activeActions.put(earliestAction, earliestObj!!)
+                world.activeActions[earliestAction] = earliestObj!!
                 // add an action that a) causes a call to act() at the end, b) completes the action in the world
                 earliestObj.addAction(object : Action(earliestAction.tauEnd, earliestAction.tauEnd) {
-                    override fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
-                        changes.completions.add(earliestAction)
+                    override fun act(world: WorldView, obj: Obj, tau: Double) {
+                        world.complete(earliestAction)
                         if (world.logActions)
-                            changes.events.add(
+                            world.addEvent(
                                 Event(
                                     "Action-end:$earliestAction",
                                     earliestState.r,
@@ -277,7 +271,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             state = Inertial(state.tau, Double.POSITIVE_INFINITY).moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
         }
 
-        assert(abs(state.r.t - evaluatedTime) < eps, { "${state.r.t}!=$evaluatedTime" })
+        assert(abs(state.r.t - evaluatedTime) < eps) { "${state.r.t}!=$evaluatedTime" }
         return state
     }
 
@@ -286,7 +280,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         // (there may be an incomplete motion started earlier)
         val prev = obj.motions().headMap(tauStart).entries.lastOrNull()
         if (prev != null && prev.value.tauStart < tauStart && prev.value.tauEnd > tauStart) {
-            motions.put(prev.key, prev.value)
+            motions[prev.key] = prev.value
         }
         return motions
     }

@@ -35,8 +35,8 @@ abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
      * @param changes to use
      * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
      */
-    open fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
-        changes.events.add(
+    open fun act(world: WorldView, obj: Obj, tau: Double) {
+        world.addEvent(
             Event(
                 "Action:${javaClass.simpleName}",
                 world.stateInFrame(obj).r,
@@ -62,21 +62,21 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
     Action(tau, until) {
 
     private val generated = mutableSetOf<Obj>()
-    override fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
+    override fun act(world: WorldView, obj: Obj, tau: Double) {
         val sourcePos = world.stateInFrame(obj)
         for (target in targets - generated) {
             val targetPos = world.stateInFrame(target)
             val dr = (targetPos.r.to3() - sourcePos.r.to3()).abs()
             // TODO if dr is small compared to time step reduce time step
             if (dr < eps * 2) {
-                collide(changes, obj, sourcePos, target, targetPos)
+                collide(world, obj, sourcePos, target, targetPos)
                 generated.add(target)
             } else if (dr > eps * 2) generated.remove(target)
         }
     }
 
-    open fun collide(changes: Changes, self: Obj, selfPos: State, target: Obj, targetPos: State) {
-        changes.events.add(Event("collide", selfPos.r, self, selfPos.tau, target, targetPos.tau))
+    open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
+        world.addEvent(Event("collide", selfPos.r, self, selfPos.tau, target, targetPos.tau))
     }
 }
 
@@ -85,10 +85,10 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
  * The period is determined from object proper time.
  */
 class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action(start, start) {
-    override fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
+    override fun act(world: WorldView, obj: Obj, tau: Double) {
         if (tau == start) {
-            changes.actions.add(obj to Sender(name, start + period, period, no + 1))
-            changes.actions.add(obj to Pulse("pulse:$name-$no", start))
+            world.addAction(obj, Sender(name, start + period, period, no + 1))
+            world.addAction(obj, Pulse("pulse:$name-$no", start))
         }
     }
 }
@@ -106,7 +106,7 @@ class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INF
     private val impossible = mutableSetOf<Obj>()
     private val tracked = mutableSetOf<Obj>()
 
-    override fun act(world: WorldView, obj: Obj, tau: Double, changes: Changes) {
+    override fun act(world: WorldView, obj: Obj, tau: Double) {
         // note: sourcePos.t is transformed start tau
         // and objPos.t is transformed now tau
         val sourcePos = world.stateInFrame(obj)
@@ -116,7 +116,7 @@ class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INF
             when (separation(newObjPos.r, sourcePos.r, eps)) {
                 Separation.TIMELIKE -> impossible.add(newObj)
                 Separation.LIGHTLIKE -> {// immediate hit
-                    changes.events.add(
+                    world.addEvent(
                         Event(
                             name,
                             newObjPos.r,
@@ -136,7 +136,7 @@ class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INF
             when (separation(otherPos.r, sourcePos.r, eps)) {
                 Separation.TIMELIKE -> throw RetrySmallerStep() // overshot
                 Separation.LIGHTLIKE -> {
-                    changes.events.add(
+                    world.addEvent(
                         Event(
                             name,
                             otherPos.r,

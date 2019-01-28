@@ -210,8 +210,8 @@ class TimeWarpTest {
         tw.addObj(o1, V3_0)
         val v = EX * 0.5
         o1.addAction(object : Action(0.5, 0.5) {
-            override fun act(world: TimeWarp.WorldView, obj: Obj, tau: Double, changes: Changes) {
-                o2 = changes.cloneObj(world, obj, "Spawned", v, 0.0)
+            override fun act(world: WorldView, obj: Obj, tau: Double) {
+                o2 = world.cloneObj(obj, "Spawned", v, 0.0)
                 //changes.actions.add(obj to Pulse("pulse:$name-$no", start))
             }
         })
@@ -231,3 +231,4 @@ class TimeWarpTest {
         assertEquals(State((v * 0.5).to4(1.0), V3_0, 1.0), world.stateInFrame(o2!!))
     }
 }
+
