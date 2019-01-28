@@ -6,7 +6,7 @@ import java.lang.IllegalArgumentException
 
 interface WorldView {
     fun addEvent(e: Event)
-    fun <T>addAction(obj: Obj, action: Action<T>)
+    fun <T> addAction(obj: Obj, action: Action<T>)
     fun addMotion(obj: Obj, motion: Motion)
     fun addOrSetObject(obj: Obj, state: State)
     fun complete(action: Action<Any>)
@@ -43,7 +43,7 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
         changes.events.add(e)
     }
 
-    override fun <T>addAction(obj: Obj, action: Action<T>) {
+    override fun <T> addAction(obj: Obj, action: Action<T>) {
         changes.actions.add(obj to action as Action<Any>)
     }
 
@@ -91,7 +91,7 @@ class World(
     override fun stateInFrame(obj: Obj, frame: Frame) =
         space.state(obj).transform(origin, frame)
 
-    override fun actionState(action: Action<Any>): Any = actionStates[action]!!
+    override fun actionState(action: Action<Any>): Any = actionStates[action] ?: action.init()
 
     override fun setAState(action: Action<Any>, state: Any) {
         actionStates[action] = state
@@ -101,7 +101,7 @@ class World(
         events.add(e)
     }
 
-    override fun <T>addAction(obj: Obj, action: Action<T>) {
+    override fun <T> addAction(obj: Obj, action: Action<T>) {
         obj.addAction(action as Action<Any>)
     }
 
@@ -155,6 +155,10 @@ data class Changes(
         for (entry in actions) {
             entry.first.addAction(entry.second)
         }
+        for (entry in actionStates) {
+            world.setAState(entry.key, entry.value)
+        }
+
         for (entry in motions) {
             entry.first.addMotion(entry.second)
         }
@@ -169,7 +173,6 @@ data class Changes(
         }
         world.events.addAll(events)
     }
-
 }
 
 /**
