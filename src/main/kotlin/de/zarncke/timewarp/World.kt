@@ -6,10 +6,10 @@ import java.lang.IllegalArgumentException
 
 interface WorldView {
     fun addEvent(e: Event)
-    fun addAction(obj: Obj, action: Action)
+    fun <T>addAction(obj: Obj, action: Action<T>)
     fun addMotion(obj: Obj, motion: Motion)
     fun addOrSetObject(obj: Obj, state: State)
-    fun complete(action: Action)
+    fun complete(action: Action<Any>)
 
     /**
      * @param obj to get position and velocity for (at current time t in world frame)
@@ -17,6 +17,9 @@ interface WorldView {
      * @return state (position and velocity) in the given frame
      */
     fun stateInFrame(obj: Obj, frame: Frame = origin): State
+
+    fun actionState(action: Action<Any>): Any
+    fun setAState(action: Action<Any>, state: Any)
 
     val origin: Frame
     val objects: List<Obj>
@@ -32,12 +35,16 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
         return newWorld
     }
 
+    override fun setAState(action: Action<Any>, state: Any) {
+        changes.actionStates[action] = state
+    }
+
     override fun addEvent(e: Event) {
         changes.events.add(e)
     }
 
-    override fun addAction(obj: Obj, action: Action) {
-        changes.actions.add(obj to action)
+    override fun <T>addAction(obj: Obj, action: Action<T>) {
+        changes.actions.add(obj to action as Action<Any>)
     }
 
     override fun addMotion(obj: Obj, motion: Motion) {
@@ -48,7 +55,7 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
         changes.objects.add(obj to state)
     }
 
-    override fun complete(action: Action) {
+    override fun complete(action: Action<Any>) {
         changes.completions.add(action)
     }
 }
@@ -71,8 +78,9 @@ class Space(val states: MutableMap<Obj, State> = mutableMapOf()) {
 class World(
     var now: Double = 0.0,
     override val objects: MutableList<Obj> = mutableListOf(),
-    val completeActions: MutableSet<Action> = mutableSetOf(),
-    val activeActions: MutableMap<Action, Obj> = mutableMapOf(),
+    val completeActions: MutableSet<Action<Any>> = mutableSetOf(),
+    val activeActions: MutableMap<Action<Any>, Obj> = mutableMapOf(),
+    val actionStates: MutableMap<Action<Any>, Any> = mutableMapOf(),
     val events: MutableList<Event> = mutableListOf(),
     val space: Space = Space()
 ) : WorldView {
@@ -83,12 +91,18 @@ class World(
     override fun stateInFrame(obj: Obj, frame: Frame) =
         space.state(obj).transform(origin, frame)
 
+    override fun actionState(action: Action<Any>): Any = actionStates[action]!!
+
+    override fun setAState(action: Action<Any>, state: Any) {
+        actionStates[action] = state
+    }
+
     override fun addEvent(e: Event) {
         events.add(e)
     }
 
-    override fun addAction(obj: Obj, action: Action) {
-        obj.addAction(action)
+    override fun <T>addAction(obj: Obj, action: Action<T>) {
+        obj.addAction(action as Action<Any>)
     }
 
     override fun addMotion(obj: Obj, motion: Motion) {
@@ -100,7 +114,7 @@ class World(
         space.set(obj, state)
     }
 
-    override fun complete(action: Action) {
+    override fun complete(action: Action<Any>) {
         completeActions.add(action)
     }
 
@@ -120,6 +134,7 @@ class World(
         objects.toMutableList(),
         completeActions.toMutableSet(),
         activeActions.toMutableMap(),
+        actionStates.toMutableMap(),
         events.toMutableList(),
         newSpace
     )
@@ -129,8 +144,9 @@ class World(
 
 
 data class Changes(
-    val actions: MutableSet<Pair<Obj, Action>> = mutableSetOf(),
-    val completions: MutableSet<Action> = mutableSetOf(),
+    val actions: MutableSet<Pair<Obj, Action<Any>>> = mutableSetOf(),
+    val actionStates: MutableMap<Action<Any>, Any> = mutableMapOf(),
+    val completions: MutableSet<Action<Any>> = mutableSetOf(),
     val motions: MutableList<Pair<Obj, Motion>> = mutableListOf(),
     val objects: MutableSet<Pair<Obj, State>> = mutableSetOf(),
     val events: MutableSet<Event> = mutableSetOf()
@@ -153,6 +169,7 @@ data class Changes(
         }
         world.events.addAll(events)
     }
+
 }
 
 /**

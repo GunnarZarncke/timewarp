@@ -192,7 +192,7 @@ class TimeWarpTest {
         val o1 = Obj("Test")
         val v = EX * 0.5
         tw.addObj(o1, V3_0, v)
-        o1.addAction(object : Action(0.5, 0.5) {})
+        o1.addAction(object : Action<Unit>(0.5, 0.5) { override  fun init(){}})
 
         tw.simulateTo(1.0)
         println(world.events)
@@ -209,8 +209,10 @@ class TimeWarpTest {
         var o2: Obj? = null
         tw.addObj(o1, V3_0)
         val v = EX * 0.5
-        o1.addAction(object : Action(0.5, 0.5) {
-            override fun act(world: WorldView, obj: Obj, tau: Double) {
+        o1.addAction(object : Action<Unit>(0.5, 0.5) {
+            override fun init() {}
+
+            override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
                 o2 = world.cloneObj(obj, "Spawned", v, 0.0)
                 //changes.actions.add(obj to Pulse("pulse:$name-$no", start))
             }

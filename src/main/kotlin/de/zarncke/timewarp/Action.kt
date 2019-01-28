@@ -7,9 +7,11 @@ import de.zarncke.timewarp.math.*
  * Defines an abstract action that an [Obj] can perform at or during a time (measured in proper time).
  * An Action can
  */
-abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
+abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
 
     class RetrySmallerStep : Exception()
+
+    abstract fun init(): T
 
     /**
      * This method will be called at the proper time tauStart and tauEnd.
@@ -32,10 +34,9 @@ abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
      * @param world with state of all objects as seen by
      * @param obj acted on at
      * @param tau proper time of object
-     * @param changes to use
      * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
      */
-    open fun act(world: WorldView, obj: Obj, tau: Double) {
+    open fun act(world: WorldView, obj: Obj, tau: Double, t: T): T {
         world.addEvent(
             Event(
                 "Action:${javaClass.simpleName}",
@@ -46,6 +47,7 @@ abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
                 tau
             )
         )
+        return t
     }
 
     fun range() = Range(tauStart, tauEnd)
@@ -59,20 +61,26 @@ abstract class Action(val tauStart: Double, val tauEnd: Double = tauStart) {
  * Only detects collisions during the specified interval (can be open-ended).
  */
 open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY, val targets: Set<Obj>) :
-    Action(tau, until) {
+    Action<DetectCollision.MyState>(tau, until) {
+    class MyState(val generated: Set<Obj> = setOf<Obj>())
 
-    private val generated = mutableSetOf<Obj>()
-    override fun act(world: WorldView, obj: Obj, tau: Double) {
+    override fun init() = MyState()
+
+
+    override fun act(world: WorldView, obj: Obj, tau: Double, state: MyState): MyState {
         val sourcePos = world.stateInFrame(obj)
-        for (target in targets - generated) {
+        val added = mutableSetOf<Obj>()
+        val removed = mutableSetOf<Obj>()
+        for (target in targets - state.generated) {
             val targetPos = world.stateInFrame(target)
             val dr = (targetPos.r.to3() - sourcePos.r.to3()).abs()
             // TODO if dr is small compared to time step reduce time step
             if (dr < eps * 2) {
                 collide(world, obj, sourcePos, target, targetPos)
-                generated.add(target)
-            } else if (dr > eps * 2) generated.remove(target)
+                added.add(target)
+            } else if (dr > eps * 2) removed.add(target)
         }
+        return MyState(state.generated + added - removed)
     }
 
     open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
@@ -84,8 +92,11 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
  * A Sender action creates periodical [Pulse]s originating from its objects 4-vector.
  * The period is determined from object proper time.
  */
-class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action(start, start) {
-    override fun act(world: WorldView, obj: Obj, tau: Double) {
+class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action<Unit>(start, start) {
+    override fun init() {
+    }
+
+    override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
         if (tau == start) {
             world.addAction(obj, Sender(name, start + period, period, no + 1))
             world.addAction(obj, Pulse("pulse:$name-$no", start))
@@ -102,14 +113,21 @@ class Sender(val name: String, val start: Double, val period: Double, val no: In
  * 2) reducing time-stap ([RetrySmallerStep]) when they overshoot
 
  */
-class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INFINITY) {
-    private val impossible = mutableSetOf<Obj>()
-    private val tracked = mutableSetOf<Obj>()
+class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
+    class MyState(
+        val impossible: Set<Obj> = setOf<Obj>(),
+        val tracked: Set<Obj> = setOf<Obj>()
+    )
 
-    override fun act(world: WorldView, obj: Obj, tau: Double) {
+    override fun init()= MyState ()
+
+    override fun act(world: WorldView, obj: Obj, tau: Double, state:MyState) :MyState{
         // note: sourcePos.t is transformed start tau
         // and objPos.t is transformed now tau
         val sourcePos = world.stateInFrame(obj)
+
+        val impossible = state.impossible.toMutableSet()
+        val tracked = state.tracked.toMutableSet()
 
         for (newObj in world.objects - impossible - tracked) {
             val newObjPos = world.stateInFrame(newObj)
@@ -152,5 +170,6 @@ class Pulse(val name: String, start: Double) : Action(start, Double.POSITIVE_INF
                 Separation.SPACELIKE -> Unit // wait
             }
         }
+        return MyState(impossible, tracked)
     }
 }

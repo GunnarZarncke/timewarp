@@ -20,12 +20,12 @@ class Obj(val name: String) {
     /**
      * Any overlapping number of actions can be specified, they just can't change the movement of the object.
      */
-    private val actions: TreeSet<Action> = TreeSet(object : Comparator<Action> {
-        override fun compare(o1: Action?, o2: Action?) = compareValues(o1?.range(), o2?.range())
+    private val actions: TreeSet<Action<Any>> = TreeSet(object : Comparator<Action<Any>> {
+        override fun compare(o1: Action<Any>?, o2: Action<Any>?) = compareValues(o1?.range(), o2?.range())
     })
 
     fun motions(): SortedMap<Double, Motion> = motions
-    fun actions(): Set<Action> = actions
+    fun actions(): Set<Action<Any>> = actions
 
     fun addMotion(motion: Motion) {
         val overlaps = motions.subMap(motion.tauStart, false, motion.tauEnd, false)
@@ -37,9 +37,9 @@ class Obj(val name: String) {
         motions.put(motion.tauStart, motion)
     }
 
-    fun addAction(action: Action) {
+    fun <T>addAction(action: Action<T>) {
         if (action.tauEnd < action.tauStart) throw IllegalArgumentException()
-        actions.add(action)
+        actions.add(action as Action<Any>)
     }
 
     override fun toString(): String {

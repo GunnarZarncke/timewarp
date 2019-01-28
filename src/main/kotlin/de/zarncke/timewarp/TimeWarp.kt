@@ -2,7 +2,6 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
-import java.lang.IllegalArgumentException
 import java.util.*
 import java.util.logging.Logger
 import kotlin.math.*
@@ -44,13 +43,14 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             //     calculate 4-vector (in world frame) of the object at tau
             // take the earliest of these 4-vectors call it r and its object o and action a
             var earliestState: State? = null
-            var earliestAction: Action? = null
+            var earliestAction: Action<Any>? = null
             var earliestObj: Obj? = null
             for (obj in world.objects) {
                 // among unhandled actions not earlier than now
                 val nextAction =
-                    obj.actions().firstOrNull { !world.completeActions.contains(it) && !world.activeActions.keys.contains(it) }
-                        ?: continue
+                    obj.actions().firstOrNull {
+                        !world.completeActions.contains(it) && !world.activeActions.keys.contains(it)
+                    } ?: continue
                 //  determine proper time tau of first scheduled action
                 var state = world.stateInFrame(obj)
                 val tauAction = nextAction.tauStart
@@ -135,11 +135,21 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 for ((action, obj) in world.activeActions + (earliestAction to earliestObj!!)) {
 
                     try {
-                        if (action == earliestAction)
-                            earliestAction.act(worldNext, earliestObj, earliestState.tau)
-                        else {
+                        if (action == earliestAction) {
+                            worldNext.setAState(
+                                earliestAction, earliestAction.act(
+                                    worldNext,
+                                    earliestObj,
+                                    earliestState.tau,
+                                    worldNext.actionState(earliestAction)
+                                )
+                            )
+                        } else {
                             val objState = worldNext.stateInFrame(obj)
-                            action.act(worldNext, obj, objState.tau)
+                            worldNext.setAState(
+                                action,
+                                action.act(worldNext, obj, objState.tau, worldNext.actionState(action))
+                            )
                         }
                     } catch (e: Action.RetrySmallerStep) {
                         // stop, we went too far ahead
@@ -165,8 +175,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             if (earliestAction.tauEnd != earliestAction.tauStart) {
                 world.activeActions[earliestAction] = earliestObj!!
                 // add an action that a) causes a call to act() at the end, b) completes the action in the world
-                earliestObj.addAction(object : Action(earliestAction.tauEnd, earliestAction.tauEnd) {
-                    override fun act(world: WorldView, obj: Obj, tau: Double) {
+                earliestObj.addAction(object : Action<Unit>(earliestAction.tauEnd, earliestAction.tauEnd) {
+                    override fun init() {}
+
+                    override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
                         world.complete(earliestAction)
                         if (world.logActions)
                             world.addEvent(
