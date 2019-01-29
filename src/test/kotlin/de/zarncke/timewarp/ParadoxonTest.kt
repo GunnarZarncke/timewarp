@@ -24,7 +24,7 @@ class ParadoxonTest {
         val event = world.events[0]
         assertEquals("A0", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
-        println( tw.world.stateInFrame(o1))
+        println( world.stateInFrame(o1))
     }
 
     /**

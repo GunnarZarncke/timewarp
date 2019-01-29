@@ -37,21 +37,18 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
      * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
      */
     open fun act(world: WorldView, obj: Obj, tau: Double, t: T): T {
-        world.addEvent(
-            Event(
-                "Action:${javaClass.simpleName}",
-                world.stateInFrame(obj).r,
-                obj,
-                tau,
-                obj,
-                tau
-            )
-        )
         return t
     }
 
     fun range() = Range(tauStart, tauEnd)
+
+    override fun toString() = "${javaClass.simpleName}:${range()}"
 }
+
+/**
+ * Action just serving to mark a point at a proper time.
+ */
+class Marker(tau: Double) : Action<Unit>(tau, tau) { override fun init() {} }
 
 /**
  * Creates a collision event if this object is at the same position as another (tracked) object.
@@ -119,9 +116,9 @@ class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Doub
         val tracked: Set<Obj> = setOf<Obj>()
     )
 
-    override fun init()= MyState ()
+    override fun init() = MyState()
 
-    override fun act(world: WorldView, obj: Obj, tau: Double, state:MyState) :MyState{
+    override fun act(world: WorldView, obj: Obj, tau: Double, state: MyState): MyState {
         // note: sourcePos.t is transformed start tau
         // and objPos.t is transformed now tau
         val sourcePos = world.stateInFrame(obj)

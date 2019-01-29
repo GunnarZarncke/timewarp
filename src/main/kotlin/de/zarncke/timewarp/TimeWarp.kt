@@ -2,8 +2,10 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
+import java.lang.UnsupportedOperationException
 import java.util.*
 import java.util.logging.Logger
+import kotlin.Comparator
 import kotlin.math.*
 
 /**
@@ -13,7 +15,42 @@ import kotlin.math.*
  */
 class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass.name)) {
 
-    var world = World()
+    private var world = World()
+    val theWorld: WorldView
+        get() = object : WorldView {
+            override val origin: Frame get() = world.origin
+            override val objects: Collection<Obj> get() = world.objects
+            override val logActions: Boolean get() = world.logActions
+            override val events: List<Event> get() = world.events.sortedWith(compareBy(Event::position, Event::name))
+            override fun addEvent(e: Event) {
+                world.addEvent(e)
+            }
+
+            override fun <T> addAction(obj: Obj, action: Action<T>) {
+                world.addAction(obj, action)
+            }
+
+            override fun addMotion(obj: Obj, motion: Motion) {
+                world.addMotion(obj, motion)
+            }
+
+            override fun addOrSetObject(obj: Obj, state: State) {
+                world.addOrSetObject(obj, state)
+            }
+
+            override fun complete(action: Action<Any>) {
+                throw UnsupportedOperationException("internal user only")
+            }
+
+            override fun stateInFrame(obj: Obj, frame: Frame) = world.stateInFrame(obj, frame)
+            override fun actionState(action: Action<Any>): Any {
+                throw UnsupportedOperationException("internal user only")
+            }
+
+            override fun setAState(action: Action<Any>, state: Any) {
+                throw UnsupportedOperationException("internal user only")
+            }
+        }
 
     fun addObj(obj: Obj, r: Vector3, v: Vector3 = V3_0, tau: Double = 0.0) {
         world.addObj(obj, r, v, tau)
@@ -29,7 +66,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
      * Simulate world up to time t.
      * Determines all intermediate events of objects and calls [Action.act] with a world updated to that time.
      * @param t coordinate time in world frame ('origin')
-     * @return World at coordinate time t
+     * @return World snapshot at coordinate time t
      */
     fun simulateTo(t: Double): World {
         // note: processing from any observer frame should lead to the same results
@@ -83,7 +120,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         .transform(mcrf, world.origin)
                 }
                 // take the earliest of these 4-vectors call it r and its object o and action a
-                if (earliestState == null || earliestState.r.t < state.r.t) {
+                if (earliestState == null || earliestState!!.r.t < state.r.t) {
                     earliestState = state
                     earliestAction = nextAction
                     earliestObj = obj
@@ -92,7 +129,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 
             // now we have determined the earliest applicable action of an object and its state, but no change yet
 
-            if (earliestAction == null) {
+            // no action is in range -> quick exit (we test both vars to make the compiler happy)
+            if (earliestAction == null || earliestState == null || earliestState.r.t > t) {
                 // (no further actions; we continue motion directly to the end state and update world directly)
                 for (obj in world.objects) {
                     val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, t)
@@ -102,9 +140,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 break
             }
 
-
             // note: loop is extra handling for reduced time steps
-            val targetTime = earliestState!!.r.t
+            val targetTime = earliestState.r.t
             var fallbackTime = world.now
             var evaluatedTime = targetTime
 

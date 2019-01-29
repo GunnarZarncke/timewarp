@@ -22,11 +22,12 @@ interface WorldView {
     fun setAState(action: Action<Any>, state: Any)
 
     val origin: Frame
-    val objects: List<Obj>
+    val objects: Collection<Obj>
+    val events: List<Event>
     val logActions: Boolean
 }
 
-class DeltaWorld(private val base: World, private val space: Space, val now: Double) : WorldView by base {
+class DeltaWorld(private val base: World, private val space: Space, val now: Double) : WorldView {
     private val changes = Changes()
 
     fun applyAll(): World {
@@ -35,9 +36,16 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
         return newWorld
     }
 
+    override val origin: Frame get() = base.origin
+    override val objects: Collection<Obj> get() = base.objects
+    override val events: List<Event> get() = base.events
+    override val logActions: Boolean get() = base.logActions
+
     override fun setAState(action: Action<Any>, state: Any) {
         changes.actionStates[action] = state
     }
+
+    override fun actionState(action: Action<Any>) = base.actionState(action)
 
     override fun addEvent(e: Event) {
         changes.events.add(e)
@@ -54,6 +62,8 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
     override fun addOrSetObject(obj: Obj, state: State) {
         changes.objects.add(obj to state)
     }
+
+    override fun stateInFrame(obj: Obj, frame: Frame) = space.state(obj).transform(origin, frame)
 
     override fun complete(action: Action<Any>) {
         changes.completions.add(action)
@@ -77,11 +87,11 @@ class Space(val states: MutableMap<Obj, State> = mutableMapOf()) {
 
 class World(
     var now: Double = 0.0,
-    override val objects: MutableList<Obj> = mutableListOf(),
+    override val objects: MutableSet<Obj> = mutableSetOf(),
     val completeActions: MutableSet<Action<Any>> = mutableSetOf(),
     val activeActions: MutableMap<Action<Any>, Obj> = mutableMapOf(),
     val actionStates: MutableMap<Action<Any>, Any> = mutableMapOf(),
-    val events: MutableList<Event> = mutableListOf(),
+    override val events: MutableList<Event> = mutableListOf(),
     val space: Space = Space()
 ) : WorldView {
     override var origin = Frame.ORIGIN
@@ -131,7 +141,7 @@ class World(
 
     fun copyWith(newSpace: Space, newNow: Double) = World(
         newNow,
-        objects.toMutableList(),
+        objects.toMutableSet(),
         completeActions.toMutableSet(),
         activeActions.toMutableMap(),
         actionStates.toMutableMap(),

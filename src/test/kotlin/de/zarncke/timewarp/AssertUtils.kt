@@ -25,8 +25,13 @@ fun assertEqualsS(s1: State, s2: State, msg: String = "states different") {
     assertEqualsV(s1.v, s2.v, msg)
 }
 
-fun assertStartsWith(prefix: String, str: String?, msg: String = "$str doest't start with $prefix") {
+fun assertStartsWith(prefix: String, str: String?, msg: String = "$str doesnt't start with $prefix") {
     if (str == null || !str.startsWith(prefix))
+        fail(msg)
+}
+
+fun assertMatches(pattern: String, str: String?, msg: String = "$str doesnt't match $pattern") {
+    if (str == null || !str.matches(pattern.toRegex()))
         fail(msg)
 }
 

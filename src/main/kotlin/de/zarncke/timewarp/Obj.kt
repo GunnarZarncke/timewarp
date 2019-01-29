@@ -27,7 +27,7 @@ class Obj(val name: String) {
     fun motions(): SortedMap<Double, Motion> = motions
     fun actions(): Set<Action<Any>> = actions
 
-    fun addMotion(motion: Motion) {
+    fun addMotion(motion: Motion) :Obj {
         val overlaps = motions.subMap(motion.tauStart, false, motion.tauEnd, false)
         if (!overlaps.isEmpty())
             throw IllegalArgumentException("motion $motion overlaps with $overlaps")
@@ -35,11 +35,13 @@ class Obj(val name: String) {
         if (next != null && motion.tauEnd > next.tauStart)
             throw IllegalArgumentException("motion $motion overlaps partly with $next")
         motions.put(motion.tauStart, motion)
+        return this
     }
 
-    fun <T>addAction(action: Action<T>) {
+    fun <T>addAction(action: Action<T>) : Obj{
         if (action.tauEnd < action.tauStart) throw IllegalArgumentException()
         actions.add(action as Action<Any>)
+        return this
     }
 
     override fun toString(): String {
