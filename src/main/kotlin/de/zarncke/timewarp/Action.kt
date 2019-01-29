@@ -23,8 +23,8 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
      * The method may...
      * <ul>
      *     <li>inspect the World but not change it (instead use changes)</li>
-     *     <li>return new actions in the future or now</li>
-     *     <li>return new motions in the future or now (but no overlapping motions are allowed)</li>
+     *     <li>return new actions in the future of now</li>
+     *     <li>return new motions in the future of now (but no overlapping motions are allowed)</li>
      *     <li>return new objects in the lightcone of this object</li>
      *     <li>throw [RetrySmallerStep] to indicate more detailed processing (see above)</li>
      * </ul>
