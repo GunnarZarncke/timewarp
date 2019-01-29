@@ -19,6 +19,18 @@ class SimulateActionTest {
     }
 
     @Test
+    fun testSimulateNeverAction() {
+        val tw = TimeWarp()
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0)
+        o1.addAction(Marker(Double.POSITIVE_INFINITY))
+
+        tw.simulateTo(1.0)
+        assertEquals(0, tw.theWorld.events.size)
+        assertEquals(V3_0.to4(1.0), tw.theWorld.stateInFrame(o1).r)
+    }
+
+    @Test
     fun testSimulateSimpleAction() {
         val tw = TimeWarp()
         val o1 = Obj("Test")

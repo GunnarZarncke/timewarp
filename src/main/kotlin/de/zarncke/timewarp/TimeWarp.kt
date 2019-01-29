@@ -130,10 +130,13 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 }
             }
 
+            if (earliest != null && earliest.state.r.t > t) {
+                earliest = null
+            }
             // now we have determined the earliest applicable action of an object and its state, but no change yet
 
             // no action is in range -> quick exit (we test both vars to make the compiler happy)
-            if (world.activeActions.isEmpty() && (earliest == null || earliest.state.r.t > t)) {
+            if (world.activeActions.isEmpty() && earliest == null) {
                 // (no further actions; we continue motion directly to the end state and update world directly)
                 for (obj in world.objects) {
                     val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, t)

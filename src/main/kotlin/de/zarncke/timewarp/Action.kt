@@ -48,7 +48,9 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
 /**
  * Action just serving to mark a point at a proper time.
  */
-class Marker(tau: Double) : Action<Unit>(tau, tau) { override fun init() {} }
+class Marker(tau: Double) : Action<Unit>(tau, tau) {
+    override fun init() {}
+}
 
 /**
  * Creates a collision event if this object is at the same position as another (tracked) object.
@@ -113,7 +115,8 @@ class Sender(val name: String, val start: Double, val period: Double, val no: In
 class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
     class MyState(
         val impossible: Set<Obj> = setOf<Obj>(),
-        val tracked: Set<Obj> = setOf<Obj>()
+        val tracked: Set<Obj> = setOf<Obj>(),
+        val sourcePos: State? = null
     )
 
     override fun init() = MyState()
@@ -121,7 +124,7 @@ class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Doub
     override fun act(world: WorldView, obj: Obj, tau: Double, state: MyState): MyState {
         // note: sourcePos.t is transformed start tau
         // and objPos.t is transformed now tau
-        val sourcePos = world.stateInFrame(obj)
+        val sourcePos = state.sourcePos ?: world.stateInFrame(obj).let { assert(it.tau == tau); it }
 
         val impossible = state.impossible.toMutableSet()
         val tracked = state.tracked.toMutableSet()
@@ -167,6 +170,6 @@ class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Doub
                 Separation.SPACELIKE -> Unit // wait
             }
         }
-        return MyState(impossible, tracked)
+        return MyState(impossible, tracked, sourcePos)
     }
 }

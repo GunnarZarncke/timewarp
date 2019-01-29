@@ -22,8 +22,10 @@ class SimulateSenderAndPulseTest {
         println(world.events.joinToString("\n"))
         assertEquals(V4_0, world.events[0].position)
         assertStartsWith("Action:Pulse:", world.events[0].name)
-        assertEquals(EX.to4(1.0), world.events[1].position)
-        assertEquals("Action:Pulsex:", world.events[1].name)
+        assertEquals(V4_0, world.events[1].position)
+        assertEquals("beep", world.events[1].name)
+        assertEquals(EX.to4(1.0), world.events[2].position)
+        assertEquals("beep", world.events[2].name)
     }
 
 }
