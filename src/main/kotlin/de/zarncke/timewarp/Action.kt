@@ -9,7 +9,7 @@ import de.zarncke.timewarp.math.*
  */
 abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
 
-    class RetrySmallerStep : Exception()
+    class RetrySmallerStep(val tHint: Double? = null) : Exception()
 
     abstract fun init(): T
 

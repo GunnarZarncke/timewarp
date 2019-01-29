@@ -2,6 +2,8 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
+import koma.min
+import java.lang.IllegalStateException
 import java.lang.UnsupportedOperationException
 import java.util.*
 import java.util.logging.Logger
@@ -150,6 +152,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             val targetTime = if (earliest == null) t else earliest.state.r.t
             var fallbackTime = world.now
             var evaluatedTime = targetTime
+            var numOfTries = 0
 
             time@ while (true) {
                 // create a candidate world - we might need to backtrack
@@ -181,11 +184,20 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                             action.act(worldNext, obj, objState.tau, worldNext.actionState(action))
                         )
                     } catch (e: Action.RetrySmallerStep) {
+                        numOfTries++
+                        if (numOfTries > 64) throw IllegalStateException("too many retries of $action")
                         // stop, we went too far ahead
                         if (Math.abs(fallbackTime - evaluatedTime) < precision) {
                             logger.warning("too high precision requirement for $earliest ($fallbackTime, $evaluatedTime)")
                         } else {
-                            evaluatedTime = (fallbackTime + evaluatedTime) / 2
+                            // if a hint is given we limit the hint to 10% to 90% of the interval
+                            // if no hint is given we use 50% of the interval
+                            evaluatedTime =
+                                    if (e.tHint != null && e.tHint > fallbackTime && e.tHint < evaluatedTime) {
+                                        val minStep = (evaluatedTime - fallbackTime) / 10
+                                        min(max(e.tHint, fallbackTime + minStep), evaluatedTime - minStep)
+                                    } else (fallbackTime + evaluatedTime) / 2
+                            logger.info("retry by $action to $evaluatedTime in $fallbackTime...$targetTime")
                             continue@time
                         }
                     }
