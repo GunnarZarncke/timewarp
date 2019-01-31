@@ -149,7 +149,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             }
 
             // note: loop is extra handling for reduced time steps
-            val targetTime = if (earliest == null) t else earliest.state.r.t
+            var targetTime = if (earliest == null) t else earliest.state.r.t
             var fallbackTime = world.now
             var evaluatedTime = targetTime
             var numOfTries = 0
@@ -192,12 +192,14 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         } else {
                             // if a hint is given we limit the hint to 10% to 90% of the interval
                             // if no hint is given we use 50% of the interval
+                            val evaluatedTimeOld = evaluatedTime
                             evaluatedTime =
                                     if (e.tHint != null && e.tHint > fallbackTime && e.tHint < evaluatedTime) {
                                         val minStep = (evaluatedTime - fallbackTime) / 10
                                         min(max(e.tHint, fallbackTime + minStep), evaluatedTime - minStep)
                                     } else (fallbackTime + evaluatedTime) / 2
                             logger.info("retry by $action to $evaluatedTime in $fallbackTime...$targetTime")
+                            targetTime = evaluatedTimeOld
                             continue@time
                         }
                     }
