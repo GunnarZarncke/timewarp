@@ -63,20 +63,22 @@ class ParadoxonTest {
         val twinOld = Obj("TwinOld")
         tw.addObj(twinOld, V3_0)
 
+        val dt = 4.0
         val twinYoung = Obj("TwinYoung")
-        twinYoung.addMotion(LongitudinalAcceleration(0.0, 10.0, EX))
-        twinYoung.addAction(DetectCollision(10.0, 20.0, twinOld))
-        twinYoung.addMotion(LongitudinalAcceleration(10.0, 20.0, EX * -1.0))
+        twinYoung.addMotion(LongitudinalAcceleration(0.0, dt, EX))
+        twinYoung.addAction(DetectCollision(dt, Double.POSITIVE_INFINITY, twinOld))
+        twinYoung.addMotion(LongitudinalAcceleration(dt, 3*dt, -EX))
+        twinYoung.addMotion(LongitudinalAcceleration(3*dt, 4*dt, EX))
         tw.addObj(twinYoung, V3_0)
 
-        val world = tw.simulateTo(10.0)
+        val world = tw.simulateTo(110.0)
         println(world.events.joinToString("\n"))
 
-        val event = world.events[0]
-        assertEquals("collision", event.name)
+        val event = world.events[7]
+        assertEquals("collide", event.name)
         val ageYoung = world.stateInFrame(twinYoung).tau
         val ageOld = world.stateInFrame(twinOld).tau
-        assertTrue(ageOld > ageYoung)
+        assertTrue(ageOld > 6*ageYoung)
     }
 
 
