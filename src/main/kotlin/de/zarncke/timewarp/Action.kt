@@ -2,10 +2,10 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.Action.RetrySmallerStep
 import de.zarncke.timewarp.math.*
+import java.lang.Math.abs
 
 /**
  * Defines an abstract action that an [Obj] can perform at or during a time (measured in proper time).
- * An Action can
  */
 abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : Cause<Action<T>> {
 
@@ -13,9 +13,7 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : 
 
     override val name get() = javaClass.simpleName
     override val isSilent: Boolean get() = false
-
     override fun compareTo(other: Action<T>) = compareValues(name, other.name)
-
 
     abstract fun init(): T
 
@@ -39,8 +37,8 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : 
      *
      * @param world with state of all objects as seen by
      * @param obj acted on at
-     * @param tau proper time of object
-     * @param state of the action (if the action has no state use Unit
+     * @param tau proper time of object (guaranteed to be called at approximately startTau and endTau)
+     * @param state of the action (if the action has no state use Unit)
      * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
      */
     open fun act(world: WorldView, obj: Obj, tau: Double, state: T): T {
@@ -106,12 +104,13 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
  * @param period of the pulses
  * @param no initial number of the pulse
  */
-class Sender(override val name: String, val start: Double, val period: Double, val no: Int = 0) : Action<Unit>(start, start) {
+class Sender(override val name: String, val start: Double, val period: Double, val no: Int = 0) :
+    Action<Unit>(start, start) {
     override fun init() {
     }
 
     override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
-        if (tau == start) {
+        if (abs(tau - start) < eps) {
             world.addAction(obj, Sender(name, start + period, period, no + 1))
             world.addAction(obj, Pulse("pulse:$name-$no", start))
         }

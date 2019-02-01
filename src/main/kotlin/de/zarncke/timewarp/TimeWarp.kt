@@ -188,6 +188,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         .moveUntilProperTime(mcrf, state.tau, tauAction)
                         .transform(mcrf, world.origin)
                 }
+                // we know that tau must be the analytic proper time
+                state = state.exactTau(tauAction)
                 // take the earliest of these 4-vectors call it r and its object o and action a
                 if (earliest == null || state.r.t < earliest.state.r.t) {
                     earliest = Activity(state, nextAction, obj)
@@ -204,6 +206,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 // (no further actions; we continue motion directly to the end state and update world directly)
                 for (obj in world.objects) {
                     val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, t)
+                    if (state.r.t != world.now) assert(false)
                     world.space.set(obj, state)
                 }
                 world.now = t
@@ -225,7 +228,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 //   update the object in the world to it's 4-vector
                 for (obj in world.objects) {
                     val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, evaluatedTime)
-
+                    if (state.r.t != evaluatedTime)
+                        assert(false)
                     space.set(obj, state)
                 }
 
@@ -281,7 +285,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 if (earliest.action.tauEnd != earliest.action.tauStart) {
                     world.addActiveAction(earliest.action, earliest.obj)
                     // add an action that a) causes a call to act() at the end, b) completes the action in the world
-                    earliest.obj.addAction(Finisher(earliest))
+                    if (earliest.action.tauEnd != Double.POSITIVE_INFINITY)
+                        earliest.obj.addAction(Finisher(earliest))
                 } else
                     world.complete(earliest.action)
 
@@ -376,8 +381,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             state = Inertial(state.tau, Double.POSITIVE_INFINITY).moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
         }
 
-        assert(abs(state.r.t - evaluatedTime) < eps) { "${state.r.t}!=$evaluatedTime" }
-        return state
+        assert(abs(state.r.t - evaluatedTime) < eps)
+        { "${state.r.t}!=$evaluatedTime" }
+        // analytically the time component is exact and we set it thus
+        return state.copy(r = state.r.copy(t = evaluatedTime))
     }
 
     private fun getMotionsInRange(obj: Obj, tauStart: Double, tauEnd: Double): SortedMap<Double, Motion> {

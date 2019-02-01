@@ -13,12 +13,13 @@ class ParadoxonTest {
     fun testSimulateRocketClocks() {
         val tw = TimeWarp()
         val o1 = Obj("RocketBottom")
-        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
+        val a = EX * 0.1
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
         o1.addAction(Sender("A", 0.0, 1.0))
         tw.addObj(o1, V3_0)
 
         val o2 = Obj("RocketTop")
-        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
         tw.addObj(o2, EX)
 
         val world = tw.simulateTo(10.0)

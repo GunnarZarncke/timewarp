@@ -1,6 +1,7 @@
 package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.*
+import java.lang.Math.abs
 
 /**
  * State of an object in a frame (by default world origin frame).
@@ -35,5 +36,10 @@ data class State(val r: Vector4, val v: Vector3, val tau: Double) {
             transformedAddedVelocity(to.v, s.v),
             tau
         )
+    }
+
+    fun exactTau(tauAction: Double):State {
+        assert(abs(tauAction - tau) < eps)
+        return copy(tau = tauAction)
     }
 }
