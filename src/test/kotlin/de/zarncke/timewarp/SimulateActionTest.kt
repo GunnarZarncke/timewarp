@@ -36,13 +36,13 @@ class SimulateActionTest {
         val o1 = Obj("Test")
         val v = EX * 0.5
         tw.addObj(o1, V3_0, v)
-        o1.addAction(Marker(0.5))
+        val marker = Marker(0.5)
+        o1.addAction(marker)
 
         tw.simulateTo(1.0)
         val world = tw.theWorld
-        println(world.events)
         assertEquals((EX * 0.25 * gamma(v)).to4(0.5 * gamma(v)), world.events[0].position)
-        assertEquals("Action:Marker:Range(from=0.5, to=0.5)", world.events[0].name)
+        assertEquals(marker, world.events[0].cause)
         assertEqualsS(State(v.to4(1.0), v, 1 / gamma(v)), world.stateInFrame(o1))
     }
 
@@ -54,23 +54,23 @@ class SimulateActionTest {
         var o2: Obj? = null
         tw.addObj(o1, V3_0)
         val v = EX * 0.5
+        val marker = Marker(0.25)
         o1.addAction(object : Action<Unit>(0.5, 0.5) {
             override fun init() {}
-            override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
+            override fun act(world: WorldView, obj: Obj, tau: Double, state: Unit) {
                 o2 = world.cloneObj(obj, "Spawned", v, 0.0)
-                    .addAction(Marker(0.25))
+                    .addAction(marker)
             }
         })
 
         tw.simulateTo(1.0)
-        println(world.events.joinToString("\n"))
         // events at t=0.5
         assertEquals(V3_0.to4(0.5), world.events[0].position)
         assertEquals("Clone", world.events[1].name)
         assertEquals(o2, world.events[1].receiver)
         assertEquals(V3_0.to4(0.5), world.events[1].position)
 
-        assertStartsWith("Action:Marker:", world.events[2].name)
+        assertEquals(marker, world.events[2].cause)
         assertEquals((v * 0.25 * gamma(v)).to4(0.5 + 0.25 * gamma(v)), world.events[2].position)
         assertEquals(0.25, world.events[2].tauReceiver)
         // state at t=1.0

@@ -7,7 +7,6 @@ import java.lang.IllegalStateException
 import java.lang.UnsupportedOperationException
 import java.util.*
 import java.util.logging.Logger
-import kotlin.Comparator
 import kotlin.math.*
 
 /**
@@ -40,21 +39,35 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 world.addOrSetObject(obj, state)
             }
 
-            override fun complete(action: Action<Any>) {
-                throw UnsupportedOperationException("internal user only")
+            override fun complete(action: Action<*>) {
+                throw UnsupportedOperationException("internal use only")
             }
+
+            override fun deactivate(action: Action<*>) {
+                throw UnsupportedOperationException("internal use only")
+            }
+
+            override val activeActions: Map<Action<*>, Obj>
+                get() = throw UnsupportedOperationException("internal use only")
+
+            override val completeActions: Set<Action<*>>
+                get() = throw UnsupportedOperationException("internal use only")
+
+            override fun addActiveAction(action: Action<*>, obj: Obj) =
+                throw UnsupportedOperationException("internal use only")
 
             override fun stateInFrame(obj: Obj, frame: Frame) = world.stateInFrame(obj, frame)
-            override fun actionState(action: Action<Any>): Any {
-                throw UnsupportedOperationException("internal user only")
+            override fun actionState(action: Action<*>): Any {
+                throw UnsupportedOperationException("internal use only")
             }
 
-            override fun setAState(action: Action<Any>, state: Any) {
-                throw UnsupportedOperationException("internal user only")
+            override fun setAState(action: Action<*>, state: Any?) {
+                throw UnsupportedOperationException("internal use only")
             }
         }
 
     fun addObj(obj: Obj, r: Vector3, v: Vector3 = V3_0, tau: Double = 0.0) {
+        assert(v.abs() < 1.0)
         world.addObj(obj, r, v, tau)
     }
 
@@ -66,7 +79,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 
     data class Activity(
         var state: State,
-        var action: Action<Any>,
+        var action: Action<*>,
         var obj: Obj
     )
 
@@ -78,6 +91,28 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
      * @return World snapshot at coordinate time t
      */
     fun simulateTo(t: Double): World {
+        class Finisher(private val activity: Activity) : Action<Unit>(activity.action.tauEnd, activity.action.tauEnd) {
+            override fun init() {}
+
+            override fun act(world: WorldView, obj: Obj, tau: Double, state: Unit) {
+                world.complete(activity.action)
+                if (world.logActions)
+                    world.addEvent(
+                        Event(
+                            "Action-end",
+                            activity.action,
+                            activity.state.r,
+                            activity.obj,
+                            activity.state.tau,
+                            obj,
+                            tau
+                        )
+                    )
+            }
+
+            override fun toString() = "Finish($tauEnd)"
+        }
+
         // note: processing from any observer frame should lead to the same results
         // while simulation target time not yet reached
         while (world.now < t) {
@@ -181,7 +216,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         val objState = worldNext.stateInFrame(obj)
                         worldNext.setAState(
                             action,
-                            action.act(worldNext, obj, objState.tau, worldNext.actionState(action))
+                            (action as Action<Any?>).act(worldNext, obj, objState.tau, worldNext.actionState(action))
                         )
                     } catch (e: Action.RetrySmallerStep) {
                         numOfTries++
@@ -217,33 +252,17 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             // mark action a as done
             if (earliest != null) {
                 if (earliest.action.tauEnd != earliest.action.tauStart) {
-                    world.activeActions[earliest.action] = earliest.obj
+                    world.addActiveAction(earliest.action, earliest.obj)
                     // add an action that a) causes a call to act() at the end, b) completes the action in the world
-                    earliest.obj.addAction(object : Action<Unit>(earliest.action.tauEnd, earliest.action.tauEnd) {
-                        override fun init() {}
-
-                        override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
-                            world.complete(earliest.action)
-                            if (world.logActions)
-                                world.addEvent(
-                                    Event(
-                                        "Action-end:${earliest.action}",
-                                        earliest.state.r,
-                                        earliest.obj,
-                                        earliest.state.tau,
-                                        obj,
-                                        tau
-                                    )
-                                )
-                        }
-                    })
+                    earliest.obj.addAction(Finisher(earliest))
                 } else
-                    world.completeActions.add(earliest.action)
+                    world.complete(earliest.action)
 
-                if (world.logActions)
-                    world.events.add(
+                if (world.logActions && earliest.action !is Finisher)
+                    world.addEvent(
                         Event(
-                            "Action:${earliest.action}",
+                            "Action",
+                            earliest.action,
                             earliest.state.r,
                             earliest.obj,
                             earliest.state.tau,
@@ -297,9 +316,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                     .transform(s, worldFrame)
             } else {
                 if (world.logMotions)
-                    world.events.add(
+                    world.addEvent(
                         Event(
-                            "Motion:${entry.value}",
+                            "Motion",
+                            entry.value,
                             state.r,
                             obj,
                             state.tau,
@@ -310,9 +330,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             }
             state = entry.value.moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
             if (world.logMotions && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
-                world.events.add(
+                world.addEvent(
                     Event(
-                        "Motion-end:${entry.value}",
+                        "Motion-end",
+                        entry.value,
                         state.r,
                         obj,
                         state.tau,

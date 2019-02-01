@@ -14,14 +14,15 @@ class SimulateSenderAndPulseTest {
         val o2 = Obj("Receiver")
         tw.addObj(o1, V3_0)
         tw.addObj(o2, EX)
-        o1.addAction(Pulse("beep", 0.0))
+        val pulse = Pulse("beep", 0.0)
+        o1.addAction(pulse)
 
         tw.simulateTo(2.0)
 
         val world = tw.theWorld
         println(world.events.joinToString("\n"))
         assertEquals(V4_0, world.events[0].position)
-        assertStartsWith("Action:Pulse:", world.events[0].name)
+        assertEquals(pulse, world.events[0].cause)
         assertEquals(V4_0, world.events[1].position)
         assertEquals("beep", world.events[1].name)
         assertEquals(EX.to4(1.0), world.events[2].position)

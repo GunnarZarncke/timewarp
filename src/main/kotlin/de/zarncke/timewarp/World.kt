@@ -9,7 +9,7 @@ interface WorldView {
     fun <T> addAction(obj: Obj, action: Action<T>)
     fun addMotion(obj: Obj, motion: Motion)
     fun addOrSetObject(obj: Obj, state: State)
-    fun complete(action: Action<Any>)
+    fun complete(action: Action<*>)
 
     /**
      * @param obj to get position and velocity for (at current time t in world frame)
@@ -18,13 +18,17 @@ interface WorldView {
      */
     fun stateInFrame(obj: Obj, frame: Frame = origin): State
 
-    fun actionState(action: Action<Any>): Any
-    fun setAState(action: Action<Any>, state: Any)
+    fun actionState(action: Action<*>): Any?
+    fun setAState(action: Action<*>, state: Any?)
+    fun deactivate(action: Action<*>)
 
     val origin: Frame
     val objects: Collection<Obj>
+    val activeActions:Map<Action<*>,Obj>
+    val completeActions: Set<Action<*>>
     val events: List<Event>
     val logActions: Boolean
+    fun addActiveAction(action:Action<*>,obj:Obj)
 }
 
 class DeltaWorld(private val base: World, private val space: Space, val now: Double) : WorldView {
@@ -40,19 +44,23 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
     override val objects: Collection<Obj> get() = base.objects
     override val events: List<Event> get() = base.events
     override val logActions: Boolean get() = base.logActions
+    override val activeActions:Map<Action<*>,Obj> = base.activeActions
+    override fun addActiveAction(action: Action<*>, obj: Obj) = base.addActiveAction(action,obj)
 
-    override fun setAState(action: Action<Any>, state: Any) {
+    override val completeActions:Set<Action<*>>  = base.completeActions
+
+    override fun setAState(action: Action<*>, state: Any?) {
         changes.actionStates[action] = state
     }
 
-    override fun actionState(action: Action<Any>) = base.actionState(action)
+    override fun actionState(action: Action<*>) = base.actionState(action)
 
     override fun addEvent(e: Event) {
         changes.events.add(e)
     }
 
     override fun <T> addAction(obj: Obj, action: Action<T>) {
-        changes.actions.add(obj to action as Action<Any>)
+        changes.actions.add(obj to action as Action<*>)
     }
 
     override fun addMotion(obj: Obj, motion: Motion) {
@@ -65,7 +73,11 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
 
     override fun stateInFrame(obj: Obj, frame: Frame) = space.state(obj).transform(origin, frame)
 
-    override fun complete(action: Action<Any>) {
+    override fun deactivate(action: Action<*>) {
+        base.deactivate(action)
+    }
+
+    override fun complete(action: Action<*>) {
         changes.completions.add(action)
     }
 }
@@ -82,18 +94,27 @@ class Space(val states: MutableMap<Obj, State> = mutableMapOf()) {
         (states[obj] ?: throw IllegalArgumentException("unknown object $obj"))
 
     fun copy() = Space(states.toMutableMap())
-
 }
 
 class World(
     var now: Double = 0.0,
-    override val objects: MutableSet<Obj> = mutableSetOf(),
-    val completeActions: MutableSet<Action<Any>> = mutableSetOf(),
-    val activeActions: MutableMap<Action<Any>, Obj> = mutableMapOf(),
-    val actionStates: MutableMap<Action<Any>, Any> = mutableMapOf(),
-    override val events: MutableList<Event> = mutableListOf(),
+    private val theObjects: MutableSet<Obj> = mutableSetOf(),
+    private val theCompleteActions: MutableSet<Action<*>> = mutableSetOf(),
+    private val theActiveActions: MutableMap<Action<*>,Obj> = mutableMapOf(),
+
+    private val actionStates: MutableMap<Action<*>, Any?> = mutableMapOf(),
+    private val theEvents:MutableList<Event> = mutableListOf(),
     val space: Space = Space()
 ) : WorldView {
+    override fun addActiveAction(action: Action<*>, obj: Obj) {
+        theActiveActions[action] = obj
+    }
+
+    override val completeActions:Set<Action<*>> get() = theCompleteActions
+    override val objects: Set<Obj> get() = theObjects
+    override val activeActions:Map<Action<*>,Obj> get() = theActiveActions
+    override val events :List<Event>
+        get() = theEvents
     override var origin = Frame.ORIGIN
     override var logActions = true
     var logMotions = true
@@ -101,18 +122,18 @@ class World(
     override fun stateInFrame(obj: Obj, frame: Frame) =
         space.state(obj).transform(origin, frame)
 
-    override fun actionState(action: Action<Any>): Any = actionStates[action] ?: action.init()
+    override fun actionState(action: Action<*>): Any? = actionStates[action] ?: action.init()
 
-    override fun setAState(action: Action<Any>, state: Any) {
+    override fun setAState(action: Action<*>, state: Any?) {
         actionStates[action] = state
     }
 
     override fun addEvent(e: Event) {
-        events.add(e)
+        theEvents.add(e)
     }
 
     override fun <T> addAction(obj: Obj, action: Action<T>) {
-        obj.addAction(action as Action<Any>)
+        obj.addAction(action as Action<*>)
     }
 
     override fun addMotion(obj: Obj, motion: Motion) {
@@ -120,12 +141,16 @@ class World(
     }
 
     override fun addOrSetObject(obj: Obj, state: State) {
-        objects.add(obj)
+        theObjects.add(obj)
         space.set(obj, state)
     }
 
-    override fun complete(action: Action<Any>) {
-        completeActions.add(action)
+    override fun complete(action: Action<*>) {
+        theCompleteActions.add(action)
+    }
+
+    override fun deactivate(action: Action<*>) {
+        theActiveActions.remove(action)
     }
 
     /**
@@ -135,7 +160,7 @@ class World(
      * @param tau initial proper time of object clock (defaulting to 0)
      */
     fun addObj(obj: Obj, r: Vector3 = V3_0, v: Vector3 = V3_0, tau: Double = 0.0) {
-        objects.add(obj)
+        theObjects.add(obj)
         space.set(obj, State(r.to4(now), v, tau))
     }
 
@@ -154,9 +179,9 @@ class World(
 
 
 data class Changes(
-    val actions: MutableSet<Pair<Obj, Action<Any>>> = mutableSetOf(),
-    val actionStates: MutableMap<Action<Any>, Any> = mutableMapOf(),
-    val completions: MutableSet<Action<Any>> = mutableSetOf(),
+    val actions: MutableSet<Pair<Obj, Action<*>>> = mutableSetOf(),
+    val actionStates: MutableMap<Action<*>, Any?> = mutableMapOf(),
+    val completions: MutableSet<Action<*>> = mutableSetOf(),
     val motions: MutableList<Pair<Obj, Motion>> = mutableListOf(),
     val objects: MutableSet<Pair<Obj, State>> = mutableSetOf(),
     val events: MutableSet<Event> = mutableSetOf()
@@ -178,10 +203,10 @@ data class Changes(
             world.addOrSetObject(entry.first, entry.second)
         }
         for (entry in completions) {
-            world.completeActions.add(entry)
-            world.activeActions.remove(entry)
+            world.complete(entry)
+            world.deactivate(entry)
         }
-        world.events.addAll(events)
+        events.forEach{world.addEvent(it)}
     }
 }
 
@@ -203,7 +228,7 @@ fun WorldView.cloneObj(
     val state = stateInFrame(obj)
     val tauClone = tau ?: state.tau
     addOrSetObject(clone, State(state.r, state.v + vRelative, tauClone))
-    addEvent(Event("Clone", state.r, obj, state.tau, clone, tauClone))
+    addEvent(Event("Clone",this, state.r, obj, state.tau, clone, tauClone))
     return clone
 }
 

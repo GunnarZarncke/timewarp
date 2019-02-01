@@ -34,10 +34,11 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
      * @param world with state of all objects as seen by
      * @param obj acted on at
      * @param tau proper time of object
+     * @param state of the action (if the action has no state use Unit
      * @throws RetrySmallerStep indicates that the simulation should use smaller steps to approximate an event
      */
-    open fun act(world: WorldView, obj: Obj, tau: Double, t: T): T {
-        return t
+    open fun act(world: WorldView, obj: Obj, tau: Double, state: T): T {
+        return state
     }
 
     fun range() = Range(tauStart, tauEnd)
@@ -59,8 +60,9 @@ class Marker(tau: Double) : Action<Unit>(tau, tau) {
  *
  * Only detects collisions during the specified interval (can be open-ended).
  */
-open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY, val targets: Set<Obj>) :
+open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY, vararg val targets: Obj) :
     Action<DetectCollision.MyState>(tau, until) {
+
     class MyState(val generated: Set<Obj> = setOf<Obj>())
 
     override fun init() = MyState()
@@ -70,20 +72,23 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
         val sourcePos = world.stateInFrame(obj)
         val added = mutableSetOf<Obj>()
         val removed = mutableSetOf<Obj>()
-        for (target in targets - state.generated) {
+        for (target in targets) {
             val targetPos = world.stateInFrame(target)
             val dr = (targetPos.r.to3() - sourcePos.r.to3()).abs()
             // TODO if dr is small compared to time step reduce time step
-            if (dr < eps * 2) {
-                collide(world, obj, sourcePos, target, targetPos)
-                added.add(target)
-            } else if (dr > eps * 2) removed.add(target)
+            if (target in state.generated) {
+                if (dr > eps * 2) removed.add(target)
+            } else
+                if (dr < eps * 2) {
+                    collide(world, obj, sourcePos, target, targetPos)
+                    added.add(target)
+                }
         }
         return MyState(state.generated + added - removed)
     }
 
     open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
-        world.addEvent(Event("collide", selfPos.r, self, selfPos.tau, target, targetPos.tau))
+        world.addEvent(Event("collide",this, selfPos.r, self, selfPos.tau, target, targetPos.tau))
     }
 }
 
@@ -137,6 +142,7 @@ class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Doub
                     world.addEvent(
                         Event(
                             name,
+                            this,
                             newObjPos.r,
                             obj,
                             sourcePos.tau,
@@ -157,6 +163,7 @@ class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Doub
                     world.addEvent(
                         Event(
                             name,
+                            this,
                             otherPos.r,
                             obj,
                             sourcePos.tau,

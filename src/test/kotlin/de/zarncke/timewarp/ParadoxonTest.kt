@@ -21,6 +21,8 @@ class ParadoxonTest {
         tw.addObj(o2, EX)
 
         val world = tw.simulateTo(10.0)
+        println(world.events.joinToString("\n"))
+
         val event = world.events[0]
         assertEquals("A0", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
@@ -41,13 +43,15 @@ class ParadoxonTest {
         tw.addObj(rR, (EX * 2.0), EX * 0.9)
 
         val dA = Obj("DoorA")
-        dA.addAction(DetectCollision(0.0,10.0, setOf(rL,rR)))
+        dA.addAction(DetectCollision(0.0,10.0, rL,rR))
         tw.addObj(dA, (EX * 4.0))
         val dB = Obj("DoorB")
-        dB.addAction(DetectCollision(0.0,10.0, setOf(rL,rR)))
+        dB.addAction(DetectCollision(0.0,10.0, rL,rR))
         tw.addObj(dB, (EX * 5.0))
 
         val world = tw.simulateTo(10.0)
+        println(world.events.joinToString("\n"))
+
         val event = world.events[0]
         assertEquals("DetectCollision", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
@@ -61,11 +65,13 @@ class ParadoxonTest {
 
         val twinYoung = Obj("TwinYoung")
         twinYoung.addMotion(LongitudinalAcceleration(0.0, 10.0, EX))
-        twinYoung.addAction(DetectCollision(10.0, 20.0, setOf(twinOld)))
+        twinYoung.addAction(DetectCollision(10.0, 20.0, twinOld))
         twinYoung.addMotion(LongitudinalAcceleration(10.0, 20.0, EX * -1.0))
         tw.addObj(twinYoung, V3_0)
 
         val world = tw.simulateTo(10.0)
+        println(world.events.joinToString("\n"))
+
         val event = world.events[0]
         assertEquals("collision", event.name)
         val ageYoung = world.stateInFrame(twinYoung).tau

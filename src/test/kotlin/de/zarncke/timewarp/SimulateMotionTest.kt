@@ -17,8 +17,8 @@ class SimulateMotionTest {
         tw.simulateTo(1.0)
         println(world.events)
         assertEquals(2, world.events.size)
-        assertEquals("Motion:Inertial(0.0-1.0)", world.events[0].name)
-        assertEquals("Motion-end:Inertial(0.0-1.0)", world.events[1].name)
+        assertEquals("Motion", world.events[0].name)
+        assertEquals("Motion-end", world.events[1].name)
         assertEquals(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1))
     }
 
@@ -92,18 +92,21 @@ class SimulateMotionTest {
         val o1 = Obj("Test")
         tw.addObj(o1, V3_0)
         val a = EX
-        o1.addMotion(LongitudinalAcceleration(0.0, 1.0, a))
+        val acceleration = LongitudinalAcceleration(0.0, 1.0, a)
+        o1.addMotion(acceleration)
 
         tw.simulateTo(1.0)
         val s = relativisticCoordAcceleration(a, 1.0)
         assertEqualsS(s, world.stateInFrame(o1), "expect accelerated motion so far")
         assertEquals(1, world.events.size, "we didn't reach end of acceleration")
-        assertEquals("Motion:LongitudinalAcceleration(0.0-1.0) a=Vector3(x=1.0, y=0.0, z=0.0)", world.events[0].name)
+        assertEquals("Motion", world.events[0].name)
+        assertEquals(acceleration, world.events[0].cause)
 
         tw.simulateTo(2.0)
         println(world.events)
         assertEquals(2, world.events.size)
-        assertStartsWith("Motion-end:LongitudinalAcceleration", world.events[1].name)
+        assertStartsWith("Motion-end", world.events[1].name)
+        assertEquals(acceleration, world.events[1].cause)
         val s2 = relativisticAcceleration(a, 1.0)
         assertEqualsV(s2.r, world.events[1].position, "expect an event at end of acceleration")
         assertEquals(2.0, world.stateInFrame(o1).r.t)
