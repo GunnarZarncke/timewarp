@@ -12,6 +12,7 @@ data class Event(
     val tauReceiver: Double
 )
 
-interface Cause<T>:Comparable<T>{
-    val name:String
+interface Cause<T> : Comparable<T> {
+    val name: String
+    val isSilent: Boolean get() = false
 }

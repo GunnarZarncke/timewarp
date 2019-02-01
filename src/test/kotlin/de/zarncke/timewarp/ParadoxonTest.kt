@@ -2,6 +2,7 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.EX
 import de.zarncke.timewarp.math.V3_0
+import de.zarncke.timewarp.math.Vector3
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -26,7 +27,7 @@ class ParadoxonTest {
         val event = world.events[0]
         assertEquals("A0", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
-        println( world.stateInFrame(o1))
+        println(world.stateInFrame(o1))
     }
 
     /**
@@ -39,15 +40,15 @@ class ParadoxonTest {
         // a rocket of length 2 (left end
         val tw = TimeWarp()
         val rL = Obj("RocketLeft")
-        tw.addObj(rL, V3_0, EX * 0.9)
         val rR = Obj("RocketRight")
-        tw.addObj(rR, (EX * 2.0), EX * 0.9)
+        tw.addObj(rL, V3_0, EX * 0.9)
+        rL.addAction(AddDisplaced(rR, EX * 2.0))
 
         val dA = Obj("DoorA")
-        dA.addAction(DetectCollision(0.0,10.0, rL,rR))
+        dA.addAction(DetectCollision(0.0, 10.0, rL, rR))
         tw.addObj(dA, (EX * 4.0))
         val dB = Obj("DoorB")
-        dB.addAction(DetectCollision(0.0,10.0, rL,rR))
+        dB.addAction(DetectCollision(0.0, 10.0, rL, rR))
         tw.addObj(dB, (EX * 5.0))
 
         val world = tw.simulateTo(20.0)
@@ -68,8 +69,8 @@ class ParadoxonTest {
         val twinYoung = Obj("TwinYoung")
         twinYoung.addMotion(LongitudinalAcceleration(0.0, dt, EX))
         twinYoung.addAction(DetectCollision(dt, Double.POSITIVE_INFINITY, twinOld))
-        twinYoung.addMotion(LongitudinalAcceleration(dt, 3*dt, -EX))
-        twinYoung.addMotion(LongitudinalAcceleration(3*dt, 4*dt, EX))
+        twinYoung.addMotion(LongitudinalAcceleration(dt, 3 * dt, -EX))
+        twinYoung.addMotion(LongitudinalAcceleration(3 * dt, 4 * dt, EX))
         tw.addObj(twinYoung, V3_0)
 
         val world = tw.simulateTo(110.0)
@@ -79,8 +80,21 @@ class ParadoxonTest {
         assertEquals("collide", event.name)
         val ageYoung = world.stateInFrame(twinYoung).tau
         val ageOld = world.stateInFrame(twinOld).tau
-        assertTrue(ageOld > 6*ageYoung)
+        assertTrue(ageOld > 6 * ageYoung)
     }
+}
 
+/**
+ * An action that adds a object that is a certain given distance away as measured in local coordinates.
+ * This is as if the object is at the other end of a comoving rod of the given proper length in th egiven direction.
+ * Note: This can currently be used only for objects that are in the direction of motion.
+ */
+class AddDisplaced(private val newObj: Obj, private val ds: Vector3) : Action<Unit>(0.0) {
+    override fun init() {}
 
+    override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
+        val mcrf = world.comovingFrame(obj)
+        val state = world.stateInFrame(obj, mcrf).copy(r = ds.to4(0.0)).transform(mcrf, world.origin)
+        world.addOrSetObject(newObj, state)
+    }
 }

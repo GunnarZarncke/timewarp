@@ -51,5 +51,21 @@ class TimeWarpTest {
             }
     }
 
+
+    @Test
+    fun testSimulateActionMotionMix() {
+        val tw = TimeWarp()
+        val o1 = Obj("Test")
+        val o2 = Obj("Two")
+        tw.addObj(o1, V3_0)
+        tw.addObj(o2, EX)
+        o1.addAction(DetectCollision(0.0, 3.0,o2))
+        o1.addMotion(LongitudinalAcceleration(1.0,2.0, EX))
+        o2.addAction(Marker(0.5))
+
+        tw.simulateTo(3.0)
+        val world = tw.theWorld
+    }
+
 }
 

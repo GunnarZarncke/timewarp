@@ -1,7 +1,9 @@
 package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.V3_0
+import de.zarncke.timewarp.math.V4_0
 import de.zarncke.timewarp.math.Vector3
+import de.zarncke.timewarp.math.Vector4
 import java.lang.IllegalArgumentException
 
 interface WorldView {
@@ -24,11 +26,11 @@ interface WorldView {
 
     val origin: Frame
     val objects: Collection<Obj>
-    val activeActions:Map<Action<*>,Obj>
+    val activeActions: Map<Action<*>, Obj>
     val completeActions: Set<Action<*>>
     val events: List<Event>
     val logActions: Boolean
-    fun addActiveAction(action:Action<*>,obj:Obj)
+    fun addActiveAction(action: Action<*>, obj: Obj)
 }
 
 class DeltaWorld(private val base: World, private val space: Space, val now: Double) : WorldView {
@@ -44,10 +46,10 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
     override val objects: Collection<Obj> get() = base.objects
     override val events: List<Event> get() = base.events
     override val logActions: Boolean get() = base.logActions
-    override val activeActions:Map<Action<*>,Obj> = base.activeActions
-    override fun addActiveAction(action: Action<*>, obj: Obj) = base.addActiveAction(action,obj)
+    override val activeActions: Map<Action<*>, Obj> = base.activeActions
+    override fun addActiveAction(action: Action<*>, obj: Obj) = base.addActiveAction(action, obj)
 
-    override val completeActions:Set<Action<*>>  = base.completeActions
+    override val completeActions: Set<Action<*>> = base.completeActions
 
     override fun setAState(action: Action<*>, state: Any?) {
         changes.actionStates[action] = state
@@ -68,7 +70,19 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
     }
 
     override fun addOrSetObject(obj: Obj, state: State) {
-        changes.objects.add(obj to state)
+        if (state.r.t != now) {
+            if (state.r.t < now) throw IllegalArgumentException(
+                "Cannot add objects in the past ($state.r.t) of the simulation frame " +
+                        "${origin.r.copy(t = now)}"
+            )
+            // for objects that appear in the future we create the object in
+            // the simulation inertial frame now at the same space coordinates and
+            // add an action to set it in motion once its time has come.
+            obj.addMotion(object: AbruptVelocityChange(state.tau, state.v){ override val isSilent: Boolean get() = true })
+            obj.addAction(object : Marker(state.tau) { override val name get() = "Appear" })
+            changes.objects.add(obj to State(state.r.copy(t = now), V3_0, state.tau - (state.r.t - now)))
+        } else
+            changes.objects.add(obj to state)
     }
 
     override fun stateInFrame(obj: Obj, frame: Frame) = space.state(obj).transform(origin, frame)
@@ -83,9 +97,6 @@ class DeltaWorld(private val base: World, private val space: Space, val now: Dou
 }
 
 class Space(val states: MutableMap<Obj, State> = mutableMapOf()) {
-    fun comovingFrame(obj: Obj) =
-        state(obj).let { Frame(it.r, it.v) }
-
     fun set(obj: Obj, state: State) {
         states[obj] = state
     }
@@ -100,20 +111,20 @@ class World(
     var now: Double = 0.0,
     private val theObjects: MutableSet<Obj> = mutableSetOf(),
     private val theCompleteActions: MutableSet<Action<*>> = mutableSetOf(),
-    private val theActiveActions: MutableMap<Action<*>,Obj> = mutableMapOf(),
+    private val theActiveActions: MutableMap<Action<*>, Obj> = mutableMapOf(),
 
     private val actionStates: MutableMap<Action<*>, Any?> = mutableMapOf(),
-    private val theEvents:MutableList<Event> = mutableListOf(),
+    private val theEvents: MutableList<Event> = mutableListOf(),
     val space: Space = Space()
 ) : WorldView {
     override fun addActiveAction(action: Action<*>, obj: Obj) {
         theActiveActions[action] = obj
     }
 
-    override val completeActions:Set<Action<*>> get() = theCompleteActions
+    override val completeActions: Set<Action<*>> get() = theCompleteActions
     override val objects: Set<Obj> get() = theObjects
-    override val activeActions:Map<Action<*>,Obj> get() = theActiveActions
-    override val events :List<Event>
+    override val activeActions: Map<Action<*>, Obj> get() = theActiveActions
+    override val events: List<Event>
         get() = theEvents
     override var origin = Frame.ORIGIN
     override var logActions = true
@@ -140,11 +151,6 @@ class World(
         obj.addMotion(motion)
     }
 
-    override fun addOrSetObject(obj: Obj, state: State) {
-        theObjects.add(obj)
-        space.set(obj, state)
-    }
-
     override fun complete(action: Action<*>) {
         theCompleteActions.add(action)
     }
@@ -153,15 +159,12 @@ class World(
         theActiveActions.remove(action)
     }
 
-    /**
-     * @param obj to add at
-     * @param r initial position (at world simulation coordinate time [now]) (defaulting to origin) with
-     * @param v initial velocity relative to origin (defaulting zero) and
-     * @param tau initial proper time of object clock (defaulting to 0)
-     */
-    fun addObj(obj: Obj, r: Vector3 = V3_0, v: Vector3 = V3_0, tau: Double = 0.0) {
+    override fun addOrSetObject(obj: Obj, state: State) {
+        if (state.r.t != now)
+            throw IllegalArgumentException("World $this does't support adding objects at other times than now (=$now)")
+
         theObjects.add(obj)
-        space.set(obj, State(r.to4(now), v, tau))
+        space.set(obj, state)
     }
 
     fun copyWith(newSpace: Space, newNow: Double) = World(
@@ -198,7 +201,6 @@ data class Changes(
             entry.first.addMotion(entry.second)
         }
         for (entry in objects) {
-            world.addObj(entry.first)
             assert(entry.second.r.t == world.now)
             world.addOrSetObject(entry.first, entry.second)
         }
@@ -206,7 +208,7 @@ data class Changes(
             world.complete(entry)
             world.deactivate(entry)
         }
-        events.forEach{world.addEvent(it)}
+        events.forEach { world.addEvent(it) }
     }
 }
 
@@ -228,7 +230,22 @@ fun WorldView.cloneObj(
     val state = stateInFrame(obj)
     val tauClone = tau ?: state.tau
     addOrSetObject(clone, State(state.r, state.v + vRelative, tauClone))
-    addEvent(Event("Clone",obj, state.r, obj, state.tau, clone, tauClone))
+    addEvent(Event("Clone", obj, state.r, obj, state.tau, clone, tauClone))
     return clone
 }
+
+/**
+ * @param obj to add at
+ * @param r initial position (at world simulation coordinate time [now]) (defaulting to origin) with
+ * @param v initial velocity relative to origin (defaulting zero) and
+ * @param tau initial proper time of object clock (defaulting to 0)
+ */
+fun WorldView.addObj(obj: Obj, r: Vector4 = V4_0, v: Vector3 = V3_0, tau: Double = 0.0) {
+    this.addOrSetObject(obj, State(r, v, tau))
+}
+
+/**
+ * @return a frame coming with the given object at the current time
+ */
+fun WorldView.comovingFrame(obj: Obj) = this.stateInFrame(obj).let { Frame(it.r, it.v) }
 

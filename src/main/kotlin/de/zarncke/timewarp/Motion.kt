@@ -5,6 +5,8 @@ import de.zarncke.timewarp.math.*
 abstract class Motion(val tauStart: Double, val tauEnd: Double):Cause<Motion> {
 
     override val name:String get() = javaClass.simpleName
+    override val isSilent: Boolean get() = false
+
 
     override fun compareTo(other: Motion) = compareValues(name, other.name)
 
@@ -57,7 +59,7 @@ open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd)
  * @param tauStart time of the velocity change
  * @param v new velocity as measured in a reference frame prior to the velocity change
  */
-class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Inertial(tauStart, tauStart) {
+open class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Motion(tauStart, tauStart) {
     override fun moveUntilProperTime(coMovingFrame: Frame, tauNow: Double, tauTo: Double): State {
         assert(tauStart == tauNow)
         assert(tauNow == tauTo)

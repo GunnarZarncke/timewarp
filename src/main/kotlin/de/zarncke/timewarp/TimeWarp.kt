@@ -3,11 +3,10 @@ package de.zarncke.timewarp
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
 import koma.min
-import java.lang.IllegalStateException
-import java.lang.UnsupportedOperationException
 import java.util.*
 import java.util.logging.Logger
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * Relativistic simulation.
@@ -80,8 +79,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         }
 
     fun addObj(obj: Obj, r: Vector3, v: Vector3 = V3_0, tau: Double = 0.0) {
-        assert(v.abs() < 1.0)
-        world.addObj(obj, r, v, tau)
+        world.addObj(obj, r.to4(world.now), v, tau)
     }
 
     fun events(
@@ -121,6 +119,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
     fun simulateTo(t: Double): World {
         class Finisher(private val activity: Activity) : Action<Unit>(activity.action.tauEnd, activity.action.tauEnd) {
             override fun init() {}
+            override val isSilent: Boolean get() = true
 
             override fun act(world: WorldView, obj: Obj, tau: Double, state: Unit) {
                 world.complete(activity.action)
@@ -190,7 +189,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         .transform(mcrf, world.origin)
                 }
                 // take the earliest of these 4-vectors call it r and its object o and action a
-                if (earliest == null || earliest.state.r.t < state.r.t) {
+                if (earliest == null || state.r.t < earliest.state.r.t) {
                     earliest = Activity(state, nextAction, obj)
                 }
             }
@@ -286,7 +285,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 } else
                     world.complete(earliest.action)
 
-                if (world.logActions && earliest.action !is Finisher)
+                if (world.logActions && !earliest.action.isSilent)
                     world.addEvent(
                         Event(
                             "Action",
@@ -343,7 +342,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 state = entry.value.moveUntilProperTime(s, state.tau, entry.key)
                     .transform(s, worldFrame)
             } else {
-                if (world.logMotions)
+                if (world.logMotions && !entry.value.isSilent)
                     world.addEvent(
                         Event(
                             "Motion",
@@ -357,7 +356,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                     )
             }
             state = entry.value.moveUntilCoordinateTime(state.toMCRF(), evaluatedTime)
-            if (world.logMotions && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
+            if (world.logMotions && !entry.value.isSilent && state.tau == entry.value.tauEnd && entry.value.tauEnd != entry.value.tauStart)
                 world.addEvent(
                     Event(
                         "Motion-end",
@@ -382,6 +381,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
     }
 
     private fun getMotionsInRange(obj: Obj, tauStart: Double, tauEnd: Double): SortedMap<Double, Motion> {
+        if (tauStart > tauEnd)
+            throw IllegalStateException()
         val motions = obj.motions().subMap(tauStart, tauEnd).toSortedMap()
         // (there may be an incomplete motion started earlier)
         val prev = obj.motions().headMap(tauStart).entries.lastOrNull()
