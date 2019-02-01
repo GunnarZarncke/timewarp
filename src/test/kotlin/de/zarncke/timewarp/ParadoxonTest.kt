@@ -36,6 +36,7 @@ class ParadoxonTest {
      */
     @Test
     fun testRocketFitsThruSmallGap() {
+        // a rocket of length 2 (left end
         val tw = TimeWarp()
         val rL = Obj("RocketLeft")
         tw.addObj(rL, V3_0, EX * 0.9)
@@ -49,11 +50,11 @@ class ParadoxonTest {
         dB.addAction(DetectCollision(0.0,10.0, rL,rR))
         tw.addObj(dB, (EX * 5.0))
 
-        val world = tw.simulateTo(10.0)
+        val world = tw.simulateTo(20.0)
         println(world.events.joinToString("\n"))
 
         val event = world.events[0]
-        assertEquals("DetectCollision", event.name)
+        assertEquals("collide", event.name)
         assertEqualsV(EX.to4(0.0), event.position)
     }
 

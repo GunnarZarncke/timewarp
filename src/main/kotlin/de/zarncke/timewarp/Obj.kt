@@ -10,7 +10,9 @@ import kotlin.Comparator
  * An Obj has a [TimeWarp.World.stateInFrame|state] in the world i.e. position and time in that world.
  * This includes the proper time on a clock moving with the object.
  */
-class Obj(val name: String) {
+class Obj(override val name: String):Cause<Obj> {
+    override fun compareTo(other: Obj) = compareValues(name, other.name)
+
     /**
      * There can only be one motion at a time; if no motion is specified the object continues in inertial
      * movement i.e. with the last velocity.

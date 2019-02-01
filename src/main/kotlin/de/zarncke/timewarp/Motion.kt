@@ -2,7 +2,11 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.*
 
-abstract class Motion(val tauStart: Double, val tauEnd: Double) {
+abstract class Motion(val tauStart: Double, val tauEnd: Double):Cause<Motion> {
+
+    override val name:String get() = javaClass.simpleName
+
+    override fun compareTo(other: Motion) = compareValues(name, other.name)
 
     /**
      * Determines the location and velocity of an object at a given <em>proper time</em> tauTo within a co-moving reference frame.
@@ -26,7 +30,7 @@ abstract class Motion(val tauStart: Double, val tauEnd: Double) {
      */
     abstract fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State
 
-    override fun toString() = "${javaClass.simpleName}($tauStart-$tauEnd)"
+    override fun toString() = "$name($tauStart-$tauEnd)"
 
 }
 

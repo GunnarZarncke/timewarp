@@ -15,6 +15,11 @@ import kotlin.math.*
  * All computations with velocities (v) use units c=1.
  */
 class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass.name)) {
+    /*
+     * Ideas:
+     * - simulate up to proper time tau of an object
+     * - simulate up to the next/a specific event
+     */
 
     private var world = World()
     val theWorld: WorldView
@@ -22,7 +27,15 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             override val origin: Frame get() = world.origin
             override val objects: Collection<Obj> get() = world.objects
             override val logActions: Boolean get() = world.logActions
-            override val events: List<Event> get() = world.events.sortedWith(compareBy(Event::position, Event::name))
+            override val events: List<Event>
+                get() = world.events.sortedWith(
+                    compareBy(
+                        Event::position,
+                        Event::name,
+                        Event::cause
+                    )
+                )
+
             override fun addEvent(e: Event) {
                 world.addEvent(e)
             }
@@ -71,11 +84,26 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         world.addObj(obj, r, v, tau)
     }
 
-    /*
-     * Ideas:
-     * - simulate up to proper time tau of an object
-     * - simulate up to the next/a specific event
-     */
+    fun events(
+        place: Vector3? = null,
+        time: Double? = null,
+        name: String? = null,
+        nameRegex: Regex? = null,
+        tau: Double? = null,
+        receiver: Obj? = null,
+        sender: Obj? = null,
+        cause: Class<*>? = null
+    ) = theWorld.events.filter {
+        if (place != null && place != it.position.to3()) false
+        else if (time != null && time != it.position.t) false
+        else if (name != null && name != it.name) false
+        else if (nameRegex != null && !it.name.matches(nameRegex)) false
+        else if (sender != null && sender != it.sender) false
+        else if (receiver != null && receiver != it.receiver) false
+        else if (tau != null && abs(tau - it.tauReceiver) > eps) false
+        else if (cause != null && !cause.isInstance(it.cause)) false
+        else true
+    }
 
     data class Activity(
         var state: State,

@@ -7,9 +7,14 @@ import de.zarncke.timewarp.math.*
  * Defines an abstract action that an [Obj] can perform at or during a time (measured in proper time).
  * An Action can
  */
-abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) {
+abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : Cause<Action<T>> {
 
     class RetrySmallerStep(val tHint: Double? = null) : Exception()
+
+    override val name get() = javaClass.simpleName
+
+    override fun compareTo(other: Action<T>) = compareValues(name, other.name)
+
 
     abstract fun init(): T
 
@@ -88,15 +93,19 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
     }
 
     open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
-        world.addEvent(Event("collide",this, selfPos.r, self, selfPos.tau, target, targetPos.tau))
+        world.addEvent(Event("collide", this, selfPos.r, self, selfPos.tau, target, targetPos.tau))
     }
 }
 
 /**
  * A Sender action creates periodical [Pulse]s originating from its objects 4-vector.
  * The period is determined from object proper time.
+ * @param name of the pulse (plus running number)
+ * @param start of the sending
+ * @param period of the pulses
+ * @param no initial number of the pulse
  */
-class Sender(val name: String, val start: Double, val period: Double, val no: Int = 0) : Action<Unit>(start, start) {
+class Sender(override val name: String, val start: Double, val period: Double, val no: Int = 0) : Action<Unit>(start, start) {
     override fun init() {
     }
 
@@ -117,7 +126,7 @@ class Sender(val name: String, val start: Double, val period: Double, val no: In
  * 2) reducing time-stap ([RetrySmallerStep]) when they overshoot
 
  */
-class Pulse(val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
+class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
     class MyState(
         val impossible: Set<Obj> = setOf<Obj>(),
         val tracked: Set<Obj> = setOf<Obj>(),

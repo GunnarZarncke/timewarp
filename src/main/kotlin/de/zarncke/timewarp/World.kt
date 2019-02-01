@@ -228,7 +228,7 @@ fun WorldView.cloneObj(
     val state = stateInFrame(obj)
     val tauClone = tau ?: state.tau
     addOrSetObject(clone, State(state.r, state.v + vRelative, tauClone))
-    addEvent(Event("Clone",this, state.r, obj, state.tau, clone, tauClone))
+    addEvent(Event("Clone",obj, state.r, obj, state.tau, clone, tauClone))
     return clone
 }
 
