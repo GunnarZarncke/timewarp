@@ -1,6 +1,7 @@
 package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.EX
+import de.zarncke.timewarp.math.EY
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
 import org.junit.Test
@@ -23,12 +24,41 @@ class ParadoxonTest {
         tw.addObj(o2, EX)
 
         val world = tw.simulateTo(10.0)
-        println(world.events.joinToString("\n"))
-
-        val event = world.events[0]
-        assertEquals("A0", event.name)
-        assertEqualsV(EX.to4(0.0), event.position)
         println(world.stateInFrame(o1))
+
+        val events = tw.events(receiver = o2, sender = o1)
+        println(events.joinToString("\n"))
+        assertEquals("pulse:A-0", events[0].name)
+        // pulses are received later and later
+        for (i in 0..events.size - 2)
+            assertTrue(events[i + 1].tauReceiver > events[i].tauReceiver + 1)
+    }
+
+    @Test
+    fun testSimulateRocketClocksOrthogonal() {
+        val tw = TimeWarp()
+        val o1 = Obj("RocketBottom")
+        val a = EX * 0.1
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        o1.addAction(Sender("A", 0.0, 1.0))
+        tw.addObj(o1, V3_0)
+
+        val o2 = Obj("RocketTop")
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        tw.addObj(o2, EY)
+
+        val world = tw.simulateTo(10.0)
+        println(world.stateInFrame(o1))
+
+        val events = tw.events(receiver = o2, sender = o1)
+        println(events.joinToString("\n"))
+
+        assertEquals("pulse:A-0", events[0].name)
+        // pulses are received later and later
+        for (i in 0..events.size - 2) {
+            println("delta $i = ${events[i + 1].tauReceiver - events[i].tauReceiver - 1}")
+            assertTrue(events[i + 1].tauReceiver > events[i].tauReceiver)
+        }
     }
 
     /**
@@ -56,7 +86,7 @@ class ParadoxonTest {
         println(world.events.joinToString("\n"))
 
         val event = world.events[0]
-        assertEquals("collide", event.name)
+        assertEquals("collide", event.name) // TODO collision doesn't yet support arbitrary collition points
         assertEqualsV(EX.to4(0.0), event.position)
     }
 
@@ -77,7 +107,7 @@ class ParadoxonTest {
         val world = tw.simulateTo(110.0)
         println(world.events.joinToString("\n"))
 
-        val event = world.events[7]
+        val event = world.events[5]
         assertEquals("collide", event.name)
         val ageYoung = world.stateInFrame(twinYoung).tau
         val ageOld = world.stateInFrame(twinOld).tau
@@ -91,7 +121,7 @@ class ParadoxonTest {
  * This is as if the object is at the other end of a comoving rod of the given proper length in th egiven direction.
  * Note: This can currently be used only for objects that are in the direction of motion.
  */
-class AddDisplaced(tau:Double, private val newObj: Obj, private val ds: Vector3) : Action<Unit>(tau) {
+class AddDisplaced(tau: Double, private val newObj: Obj, private val ds: Vector3) : Action<Unit>(tau) {
     override fun init() {}
 
     override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {

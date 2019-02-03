@@ -195,12 +195,12 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                     val mcrf = state.toMCRF()
                     val tauStart = max(tauNext, state.tau)   // not sure this matches with state/frame
                     val tauEnd = min(entry.value.tauEnd, tauAction)
-                    if(tauStart == tauEnd){
+                    if (tauStart == tauEnd) {
                         // skip
-                        logger.fine{"skipping non-move at $tauStart"}
-                    }else
+                        logger.fine { "skipping non-move at $tauStart" }
+                    } else
                     // calculate 4-vector (in world frame) of the object at tau
-                    state = entry.value.moveUntilProperTime(mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
+                        state = entry.value.moveUntilProperTime(mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
                 }
                 // (we may need to create an inertial movement afterwards)
                 if (state.tau < tauAction) {
@@ -250,7 +250,9 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 //   execute motion to r (see below) determining tau_o
                 //   update the object in the world to it's 4-vector
                 for (obj in world.objects) {
-                    val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, evaluatedTime)
+                    val state =
+                        if (obj == earliest?.obj && earliest.state.r.t == evaluatedTime) earliest.state // if we already have this state exactly we use it
+                        else executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, evaluatedTime)
                     if (state.r.t != evaluatedTime)
                         assert(false)
                     space.set(obj, state)
@@ -434,7 +436,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 }
 
 // TODO move into context object?
-val eps = 0.000001
+val eps = 0.00000001
 val precision = eps
 
 /* Idea:
