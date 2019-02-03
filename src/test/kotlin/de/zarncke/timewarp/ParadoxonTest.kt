@@ -38,12 +38,12 @@ class ParadoxonTest {
      */
     @Test
     fun testRocketFitsThruSmallGap() {
-        // a rocket of length 2 (left end
+        // a rocket of proper length 2 (the right end is created via an AddDisplaced action in the rocket frame)
         val tw = TimeWarp()
         val rL = Obj("RocketLeft")
         val rR = Obj("RocketRight")
         tw.addObj(rL, V3_0, EX * 0.9)
-        rL.addAction(AddDisplaced(rR, EX * 2.0))
+        rL.addAction(AddDisplaced(0.0, rR, EX * 2.0))
 
         val dA = Obj("DoorA")
         dA.addAction(DetectCollision(0.0, 10.0, rL, rR))
@@ -86,11 +86,12 @@ class ParadoxonTest {
 }
 
 /**
- * An action that adds a object that is a certain given distance away as measured in local coordinates.
+ * An action that adds a object that is a certain given distance away as measured in local coordinates
+ * (= the proper length of a rod between this and the new object).
  * This is as if the object is at the other end of a comoving rod of the given proper length in th egiven direction.
  * Note: This can currently be used only for objects that are in the direction of motion.
  */
-class AddDisplaced(private val newObj: Obj, private val ds: Vector3) : Action<Unit>(0.0) {
+class AddDisplaced(tau:Double, private val newObj: Obj, private val ds: Vector3) : Action<Unit>(tau) {
     override fun init() {}
 
     override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {

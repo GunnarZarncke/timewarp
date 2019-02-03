@@ -19,6 +19,23 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
      * - simulate up to proper time tau of an object
      * - simulate up to the next/a specific event
      */
+    interface Observer {
+        /**
+         * Called when the simulation has committed to simulated time step.
+         * @param world at that time
+         * @return true: abort simulation
+         */
+        fun observe(world: WorldView): Boolean
+    }
+
+    private val observers = mutableSetOf<Observer>()
+    fun addObserver(observer: Observer) {
+        observers.add(observer)
+    }
+
+    fun removeObserver(observer: Observer) {
+        observers.remove(observer)
+    }
 
     private var world = World()
     val theWorld: WorldView
@@ -90,7 +107,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         tau: Double? = null,
         receiver: Obj? = null,
         sender: Obj? = null,
-        cause: Class<*>? = null
+        causeClass: Class<*>? = null
     ) = theWorld.events.filter {
         if (place != null && place != it.position.to3()) false
         else if (time != null && time != it.position.t) false
@@ -99,7 +116,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         else if (sender != null && sender != it.sender) false
         else if (receiver != null && receiver != it.receiver) false
         else if (tau != null && abs(tau - it.tauReceiver) > eps) false
-        else if (cause != null && !cause.isInstance(it.cause)) false
+        else if (causeClass != null && !causeClass.isInstance(it.cause)) false
         else true
     }
 
@@ -123,7 +140,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 
             override fun act(world: WorldView, obj: Obj, tau: Double, state: Unit) {
                 world.complete(activity.action)
-                if (world.logActions)
+                if (world.logActions && !activity.action.isSilent)
                     world.addEvent(
                         Event(
                             "Action-end",
@@ -178,6 +195,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                     val mcrf = state.toMCRF()
                     val tauStart = max(tauNext, state.tau)   // not sure this matches with state/frame
                     val tauEnd = min(entry.value.tauEnd, tauAction)
+                    if(tauStart == tauEnd){
+                        // skip
+                        logger.fine{"skipping non-move at $tauStart"}
+                    }else
                     // calculate 4-vector (in world frame) of the object at tau
                     state = entry.value.moveUntilProperTime(mcrf, tauStart, tauEnd).transform(mcrf, world.origin)
                 }
@@ -201,12 +222,13 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             }
             // now we have determined the earliest applicable action of an object and its state, but no change yet
 
-            // no action is in range -> quick exit (we test both vars to make the compiler happy)
+            // no action is in range -> quick exit
             if (world.activeActions.isEmpty() && earliest == null) {
                 // (no further actions; we continue motion directly to the end state and update world directly)
                 for (obj in world.objects) {
                     val state = executeMotionToCoordinateTime(world.origin, world.stateInFrame(obj), obj, t)
-                    if (state.r.t != world.now) assert(false)
+                    if (state.r.t != t)
+                        assert(false)
                     world.space.set(obj, state)
                 }
                 world.now = t
@@ -220,6 +242,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
             var numOfTries = 0
 
             time@ while (true) {
+                logger.info("evaluate at $evaluatedTime")
                 // create a candidate world - we might need to backtrack
                 val space = Space()
 
@@ -272,6 +295,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 }
 
                 // (we successfully executed all actions for the evaluated time and can update the world to it)
+                logger.info("commit to $evaluatedTime")
                 world = worldNext.applyAll()
 
                 if (evaluatedTime >= targetTime)
@@ -280,8 +304,8 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                 evaluatedTime = targetTime
             }
 
-            // mark action a as done
-            if (earliest != null) {
+            // mark action a as done (if it was actually reached and not some other action cut it short)
+            if (earliest != null && evaluatedTime == earliest.state.r.t) {
                 if (earliest.action.tauEnd != earliest.action.tauStart) {
                     world.addActiveAction(earliest.action, earliest.obj)
                     // add an action that a) causes a call to act() at the end, b) completes the action in the world
@@ -302,6 +326,11 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                             earliest.state.tau
                         )
                     )
+            }
+            val anyStop = observers.map { it.observe(theWorld) }.any()
+            if (anyStop) {
+                logger.info("Stop by observer(s)")
+                break
             }
         }
 

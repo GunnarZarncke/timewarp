@@ -20,11 +20,10 @@ class Obj(override val name: String):Cause<Obj> {
     private val motions: TreeMap<Double, Motion> = TreeMap()
 
     /**
-     * Any overlapping number of actions can be specified, they just can't change the movement of the object.
+     * Any overlapping number of actions can be specified, they just can't change the movement of the object
+     * (except by changing the uniqe sequence of motions).
      */
-    private val actions: TreeSet<Action<Any>> = TreeSet(object : Comparator<Action<Any>> {
-        override fun compare(o1: Action<Any>?, o2: Action<Any>?) = compareValues(o1?.range(), o2?.range())
-    })
+    private val actions: TreeSet<Action<Any>> = TreeSet(compareBy(Action<*>::range, Action<*>::name))
 
     fun motions(): SortedMap<Double, Motion> = motions
     fun actions(): Set<Action<Any>> = actions

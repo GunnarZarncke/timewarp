@@ -2,12 +2,20 @@ package de.zarncke.timewarp
 
 import de.zarncke.timewarp.Action.RetrySmallerStep
 import de.zarncke.timewarp.math.*
+import java.lang.IllegalArgumentException
 import java.lang.Math.abs
 
 /**
  * Defines an abstract action that an [Obj] can perform at or during a time (measured in proper time).
  */
 abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : Cause<Action<T>> {
+
+    init {
+        if (!tauStart.isFinite())
+            throw IllegalArgumentException("start ${tauStart} must be finite")
+        if (tauStart > tauEnd)
+            throw IllegalArgumentException("start ${tauStart} may not be after end $tauEnd")
+    }
 
     class RetrySmallerStep(val tHint: Double? = null) : Exception()
 
@@ -47,7 +55,7 @@ abstract class Action<T>(val tauStart: Double, val tauEnd: Double = tauStart) : 
 
     fun range() = Range(tauStart, tauEnd)
 
-    override fun toString() = "${javaClass.simpleName}:${range()}"
+    override fun toString() = "${name}:${range()}"
 }
 
 /**

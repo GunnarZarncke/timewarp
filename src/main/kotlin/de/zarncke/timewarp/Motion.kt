@@ -1,10 +1,18 @@
 package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.*
+import java.lang.IllegalArgumentException
 
-abstract class Motion(val tauStart: Double, val tauEnd: Double):Cause<Motion> {
+abstract class Motion(val tauStart: Double, val tauEnd: Double) : Cause<Motion> {
 
-    override val name:String get() = javaClass.simpleName
+    init {
+        if (!tauStart.isFinite())
+            throw IllegalArgumentException("start ${tauStart} must be finite")
+        if (tauStart > tauEnd)
+            throw IllegalArgumentException("start ${tauStart} may not be after end $tauEnd")
+    }
+
+    override val name: String get() = javaClass.simpleName
     override val isSilent: Boolean get() = false
 
 
@@ -47,7 +55,7 @@ open class Inertial(tauStart: Double, tauEnd: Double) : Motion(tauStart, tauEnd)
     override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State {
         val dt = t - coMovingFrame.r.t
         assert(dt >= 0)
-        var tau = dt/gamma(coMovingFrame.v.abs())
+        var tau = dt / gamma(coMovingFrame.v.abs())
         if (this.tauStart + tau > tauEnd) tau = tauEnd - tauStart
         return State(V3_0.to4(tau), V3_0, this.tauStart + tau).transform(coMovingFrame, Frame.ORIGIN)
     }
@@ -66,9 +74,12 @@ open class AbruptVelocityChange(tauStart: Double, val v: Vector3) : Motion(tauSt
         return State(V4_0, v, tauNow)
     }
 
-    override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double): State {
-        return State(V4_0, v, tauStart).transform(coMovingFrame, Frame.ORIGIN)
-    }
+    override fun moveUntilCoordinateTime(coMovingFrame: Frame, t: Double) =
+        // important: the abrupt motion happens when moving *away* from the proper time of effect
+        if (t == coMovingFrame.r.t)
+            State(V4_0, V3_0, tauStart).transform(coMovingFrame, Frame.ORIGIN)
+        else
+            State(V4_0, v, tauStart).transform(coMovingFrame, Frame.ORIGIN)
 
     override fun toString() = "${super.toString()} v=$v"
 }

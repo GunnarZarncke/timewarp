@@ -39,7 +39,8 @@ data class State(val r: Vector4, val v: Vector3, val tau: Double) {
     }
 
     fun exactTau(tauAction: Double):State {
-        assert(abs(tauAction - tau) < eps)
+        assert(abs(tauAction - tau) < eps,
+            {"fail"})
         return copy(tau = tauAction)
     }
 }

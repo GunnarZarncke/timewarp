@@ -23,7 +23,7 @@ class SimulateActionTest {
         val tw = TimeWarp()
         val o1 = Obj("Test")
         tw.addObj(o1, V3_0)
-        o1.addAction(Marker(Double.POSITIVE_INFINITY))
+        o1.addAction(Marker(2.0))
 
         tw.simulateTo(1.0)
         assertEquals(0, tw.theWorld.events.size)
@@ -77,5 +77,45 @@ class SimulateActionTest {
         assertEqualsS(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1))
         assertEqualsS(State((v * 0.5).to4(1.0), v, 0.5 / gamma(v)), world.stateInFrame(o2!!))
     }
-}
 
+    @Test
+    fun testAddDisplacedInertial() {
+        val tw = TimeWarp()
+        val left = Obj("LeftEnd")
+        val right = Obj("RightEnd")
+        tw.addObj(left, V3_0)
+        left.addAction(AddDisplaced(0.0, right, EX))
+        left.addAction(Marker(0.5))
+
+        val world = tw.simulateTo(1.0)
+        assertEqualsS(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(left))
+        assertEqualsS(State(EX.to4(1.0), V3_0, 1.0), world.stateInFrame(right))
+        assertEqualsV(V3_0.to4(0.5), tw.events(causeClass = Marker::class.java)[0].position)
+    }
+
+    @Test
+    fun testAddDisplacedMoving() {
+        val tw = TimeWarp()
+        val left = Obj("LeftEnd")
+        val right = Obj("RightEnd")
+        val v = EX * 0.5
+        tw.addObj(left, V3_0, v)
+        left.addAction(AddDisplaced(0.0, right, EX))
+        left.addAction(Marker(0.0))
+        right.addAction(Marker(0.0))
+
+        val world = tw.simulateTo(2.0)
+        println(tw.theWorld.events.joinToString("\n"))
+
+        val r = lorentzTransformInv(v, EX.to4(0.0))
+
+        val markers = tw.events(causeClass = Marker::class.java)
+        assertEqualsV(V3_0.to4(0.0), markers[0].position)
+        assertEqualsV(r, markers[1].position)
+        assertEqualsS(State(EX.to4(2.0), v, 2.0 / gamma(v)), world.stateInFrame(left))
+        assertEqualsS(
+            State((r.to3() + v * (2 - r.t)).to4(2.0), v, (2.0 - r.t) / gamma(v)),
+            world.stateInFrame(right)
+        )
+    }
+}

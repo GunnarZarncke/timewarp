@@ -59,12 +59,59 @@ class TimeWarpTest {
         val o2 = Obj("Two")
         tw.addObj(o1, V3_0)
         tw.addObj(o2, EX)
-        o1.addAction(DetectCollision(0.0, 3.0,o2))
-        o1.addMotion(LongitudinalAcceleration(1.0,2.0, EX))
+        o1.addAction(DetectCollision(0.0, 3.0, o2))
+        o1.addMotion(LongitudinalAcceleration(1.0, 2.0, EX))
         o2.addAction(Marker(0.5))
 
         tw.simulateTo(3.0)
         val world = tw.theWorld
+    }
+
+    @Test
+    fun testSimulateMotionWithActions() {
+        val tw = TimeWarp()
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0)
+        val a = EX
+        o1.addMotion(LongitudinalAcceleration(0.0, 1.0, a))
+        o1.addAction(Marker(0.0))
+        o1.addAction(Pulse("beep", 0.0))
+
+        tw.simulateTo(1.0)
+        val world = tw.theWorld
+        tw.simulateTo(1.0)
+        val s = relativisticCoordAcceleration(a, 1.0)
+        assertEqualsS(s, world.stateInFrame(o1), "expect accelerated motion so far")
+    }
+
+    @Test
+    fun testSimulateAbruptMoveWithAction() {
+        val tw = TimeWarp()
+        val world = tw.theWorld
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0)
+        val v = EX * 0.5
+        o1.addMotion(AbruptVelocityChange(1.0, v))
+        o1.addAction(Marker(1.0))  // this caused the motion to be executed twise
+
+        tw.simulateTo(2.0)
+        println(world.events)
+        assertEqualsS(State(v.to4(2.0), v, 1.0 + 1.0 / gamma(v)), world.stateInFrame(o1))
+    }
+
+    @Test
+    fun testSimulateAbruptMoveWithExplicitInertial() {
+        val tw = TimeWarp()
+        val world = tw.theWorld
+        val o1 = Obj("Test")
+        tw.addObj(o1, V3_0)
+        val v = EX * 0.5
+        o1.addMotion(AbruptVelocityChange(1.0, v))
+        o1.addMotion(Inertial(1.0, 2.0))
+
+        tw.simulateTo(2.0)
+        println(world.events)
+        assertEqualsS(State(v.to4(2.0), v, 1.0 + 1.0 / gamma(v)), world.stateInFrame(o1))
     }
 
 }
