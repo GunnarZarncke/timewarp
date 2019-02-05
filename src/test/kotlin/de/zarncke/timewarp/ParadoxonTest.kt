@@ -5,6 +5,7 @@ import de.zarncke.timewarp.math.EY
 import de.zarncke.timewarp.math.V3_0
 import de.zarncke.timewarp.math.Vector3
 import org.junit.Test
+import java.lang.Math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -47,17 +48,18 @@ class ParadoxonTest {
         o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
         tw.addObj(o2, EY)
 
-        val world = tw.simulateTo(10.0)
+        val world = tw.simulateTo(100.0)
         println(world.stateInFrame(o1))
 
         val events = tw.events(receiver = o2, sender = o1)
         println(events.joinToString("\n"))
 
         assertEquals("pulse:A-0", events[0].name)
-        // pulses are received later and later
+        // pulses are received at equal intervals
         for (i in 0..events.size - 2) {
-            println("delta $i = ${events[i + 1].tauReceiver - events[i].tauReceiver - 1}")
-            assertTrue(events[i + 1].tauReceiver > events[i].tauReceiver)
+            val delta = events[i + 1].tauReceiver - (events[i].tauReceiver + 1)
+            println("delta_$i = $delta")
+            assertTrue(abs(delta) < eps*5, "$delta>>$eps")
         }
     }
 

@@ -436,7 +436,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 }
 
 // TODO move into context object?
-val eps = 0.00000001
+val eps = 0.00001
 val precision = eps
 
 /* Idea:
