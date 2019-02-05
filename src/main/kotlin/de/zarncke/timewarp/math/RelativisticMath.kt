@@ -4,6 +4,8 @@ import de.zarncke.timewarp.*
 import java.lang.IllegalArgumentException
 import kotlin.math.*
 
+inline fun sqr(x: Double) = x * x
+
 enum class Separation {
     TIMELIKE,
     LIGHTLIKE,
@@ -25,6 +27,7 @@ fun separation(a: Vector4, b: Vector4, eps: Double = 0.0) =
  * @return lorentzFactor
  */
 fun gamma(v: Double) = 1 / sqrt(1 - v * v)
+
 fun gamma(v: Vector3) = gamma(v.abs())
 
 /**
@@ -213,7 +216,49 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
     return relativisticAcceleration(a0, tau).transform(frame, Frame.ORIGIN)
 }
 
-inline fun sqr(x: Double) = x * x
+/**
+ * Doppler shift for motion in an arbitrary direction
+ * ...the Relativistic longitudinal Doppler effect can be extended in a straightforward fashion to calculate the
+ * Doppler shift for the case where the inertial motions of the source and receiver are at any specified angle.
+ * ...this presents the scenario from the frame of the receiver, with the source moving at speed
+ * \(v\) at an angle \(\theta _r\) measured in the frame of the receiver.
+ * The radial component of the source's motion along the line of sight is equal to
+ * $$v\cos{\theta _r}$$
+ * @param pEmission vector to location of sender at emission in coordinates of receiver frame at reception
+ * @param vSender is the velocity of the sender relative to the receiver at the point of emission in sender coordinates
+ * @return doppler shift (multiple of frequency seen by the receiver compared to sender)
+ */
+fun dopplerShift(pEmission: Vector3, vSender: Vector3): Double {
+    val vAbs = vSender.abs()   // == beta
+    val pAbs = pEmission.abs()
+    if (vAbs == 0.0)
+    else return 1.0
+    val gamma = gamma(vAbs)
+    val cosPhiR = pEmission.dot(vSender) / (pAbs * vAbs)
+    return 1 / (gamma * (1 + vAbs * cosPhiR))
+}
+
+/**
+ * Relativistic aberration is the relativistic version of aberration of light, including relativistic corrections
+ * that become significant for observers who move with velocities close to the speed of light.
+ * It is described by Einstein's special theory of relativity.
+ * Suppose, in the reference frame of the observer, the source is moving with speed v, at an angle \(\theta_s\),
+ * relative to the vector from the observer to the source at the time when the light is emitted.
+ * Then the following formula ... describes the aberration of the light source, \(\theta_o\), measured by the observer:
+ *
+ * @param pEmission vector to location of sender at emission in coordinates of receiver frame at reception
+ * @param vSender is the velocity of the sender relative to the receiver at the point of emission
+ * @return reception angle in receiver coordinate system
+ */
+fun aberation(pEmission: Vector3, vSenderS: Vector3): Double {
+    val vAbs = vSenderS.abs()   // == beta
+    val pAbs = pEmission.abs()
+    if (vAbs == 0.0)
+    else return 1.0
+    val gamma = gamma(vAbs)
+    val cosPhiS = pEmission.dot(vSenderS) / (pAbs * vAbs)
+    return (cosPhiS - vAbs) / (1 - vAbs * cosPhiS)
+}
 
 /*
  * Idea
