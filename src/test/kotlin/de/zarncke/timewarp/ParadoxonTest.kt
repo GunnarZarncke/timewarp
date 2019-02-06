@@ -1,6 +1,11 @@
 package de.zarncke.timewarp
 
+import de.zarncke.timewarp.math.EX
+import de.zarncke.timewarp.math.EY
+import de.zarncke.timewarp.math.V3_0
+import de.zarncke.timewarp.math.Vector3
 import org.junit.Test
+import java.lang.Math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -9,19 +14,53 @@ class ParadoxonTest {
     @Test
     fun testSimulateRocketClocks() {
         val tw = TimeWarp()
-        val o1 = TimeWarp.Obj("RocketBottom")
-        o1.addMotion(TimeWarp.LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
-        o1.addAction(TimeWarp.Sender("A", 0.0, 1.0))
-        tw.addObj(o1, V4_0)
+        val o1 = Obj("RocketBottom")
+        val a = EX * 0.1
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        o1.addAction(Sender("A", 0.0, 1.0))
+        tw.addObj(o1, V3_0)
 
-        val o2 = TimeWarp.Obj("RocketTop")
-        o2.addMotion(TimeWarp.LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, EX))
-        tw.addObj(o2, EX.to4(0.0))
+        val o2 = Obj("RocketTop")
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        tw.addObj(o2, EX)
 
         val world = tw.simulateTo(10.0)
-        val event = world.events[0]
-        assertEquals("A0", event.name)
-        assertEqualsV(EX.to4(0.0), event.position)
+        println(world.stateInFrame(o1))
+
+        val events = tw.events(receiver = o2, sender = o1)
+        println(events.joinToString("\n"))
+        assertEquals("pulse:A-0", events[0].name)
+        // pulses are received later and later
+        for (i in 0..events.size - 2)
+            assertTrue(events[i + 1].tauReceiver > events[i].tauReceiver + 1)
+    }
+
+    @Test
+    fun testSimulateRocketClocksOrthogonal() {
+        val tw = TimeWarp()
+        val o1 = Obj("RocketBottom")
+        val a = EX * 0.1
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        o1.addAction(Sender("A", 0.0, 1.0))
+        tw.addObj(o1, V3_0)
+
+        val o2 = Obj("RocketTop")
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
+        tw.addObj(o2, EY)
+
+        val world = tw.simulateTo(100.0)
+        println(world.stateInFrame(o1))
+
+        val events = tw.events(receiver = o2, sender = o1)
+        println(events.joinToString("\n"))
+
+        assertEquals("pulse:A-0", events[0].name)
+        // pulses are received at equal intervals
+        for (i in 0..events.size - 2) {
+            val delta = events[i + 1].tauReceiver - (events[i].tauReceiver + 1)
+            println("delta_$i = $delta")
+            assertTrue(abs(delta) < eps*5, "$delta>>$eps")
+        }
     }
 
     /**
@@ -31,44 +70,65 @@ class ParadoxonTest {
      */
     @Test
     fun testRocketFitsThruSmallGap() {
+        // a rocket of proper length 2 (the right end is created via an AddDisplaced action in the rocket frame)
         val tw = TimeWarp()
-        val rL = TimeWarp.Obj("RocketLeft")
-        rL.addMotion(TimeWarp.AbruptVelocityChange(0.0,EX * 0.9))
-        tw.addObj(rL, V4_0)
-        val rR = TimeWarp.Obj("RocketRight")
-        rR.addMotion(TimeWarp.AbruptVelocityChange(0.0,EX * 0.9))
-        tw.addObj(rR, (EX * 2.0).to4(0.0))
+        val rL = Obj("RocketLeft")
+        val rR = Obj("RocketRight")
+        tw.addObj(rL, V3_0, EX * 0.9)
+        rL.addAction(AddDisplaced(0.0, rR, EX * 2.0))
 
-        val dA = TimeWarp.Obj("DoorA")
-        tw.addObj(dA, (EX * 4.0).to4(0.0))
-        val dB = TimeWarp.Obj("DoorB")
-        tw.addObj(dB, (EX * 5.0).to4(0.0))
+        val dA = Obj("DoorA")
+        dA.addAction(DetectCollision(0.0, 10.0, rL, rR))
+        tw.addObj(dA, (EX * 4.0))
+        val dB = Obj("DoorB")
+        dB.addAction(DetectCollision(0.0, 10.0, rL, rR))
+        tw.addObj(dB, (EX * 5.0))
 
-        val world = tw.simulateTo(10.0)
+        val world = tw.simulateTo(20.0)
+        println(world.events.joinToString("\n"))
+
         val event = world.events[0]
-        assertEquals("A0", event.name)
+        assertEquals("collide", event.name) // TODO collision doesn't yet support arbitrary collition points
         assertEqualsV(EX.to4(0.0), event.position)
     }
 
     @Test
     fun testTwinparadox() {
         val tw = TimeWarp()
-        val twinOld = TimeWarp.Obj("TwinOld")
-        tw.addObj(twinOld, V4_0)
+        val twinOld = Obj("TwinOld")
+        tw.addObj(twinOld, V3_0)
 
-        val twinYoung = TimeWarp.Obj("TwinYoung")
-        twinYoung.addMotion(TimeWarp.LongitudinalAcceleration(0.0, 10.0, EX))
-        twinYoung.addAction(TimeWarp.DetectCollision(10.0, 20.0, setOf(twinOld)))
-        twinYoung.addMotion(TimeWarp.LongitudinalAcceleration(10.0, 20.0, EX * -1.0))
-        tw.addObj(twinYoung, V4_0)
+        val dt = 4.0
+        val twinYoung = Obj("TwinYoung")
+        twinYoung.addMotion(LongitudinalAcceleration(0.0, dt, EX))
+        twinYoung.addAction(DetectCollision(dt, Double.POSITIVE_INFINITY, twinOld))
+        twinYoung.addMotion(LongitudinalAcceleration(dt, 3 * dt, -EX))
+        twinYoung.addMotion(LongitudinalAcceleration(3 * dt, 4 * dt, EX))
+        tw.addObj(twinYoung, V3_0)
 
-        val world = tw.simulateTo(10.0)
-        val event = world.events[0]
-        assertEquals("collision", event.name)
-        val ageYoung = world.stateInFrame(twinYoung, world.origin).r.t
-        val ageOld = world.stateInFrame(twinOld, world.origin).r.t
-        assertTrue(ageOld > ageYoung)
+        val world = tw.simulateTo(110.0)
+        println(world.events.joinToString("\n"))
+
+        val event = world.events[5]
+        assertEquals("collide", event.name)
+        val ageYoung = world.stateInFrame(twinYoung).tau
+        val ageOld = world.stateInFrame(twinOld).tau
+        assertTrue(ageOld > 6 * ageYoung)
     }
+}
 
+/**
+ * An action that adds a object that is a certain given distance away as measured in local coordinates
+ * (= the proper length of a rod between this and the new object).
+ * This is as if the object is at the other end of a comoving rod of the given proper length in th egiven direction.
+ * Note: This can currently be used only for objects that are in the direction of motion.
+ */
+class AddDisplaced(tau: Double, private val newObj: Obj, private val ds: Vector3) : Action<Unit>(tau) {
+    override fun init() {}
 
+    override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
+        val mcrf = world.comovingFrame(obj)
+        val state = world.stateInFrame(obj, mcrf).copy(r = ds.to4(0.0)).transform(mcrf, world.origin)
+        world.addOrSetObject(newObj, state)
+    }
 }
