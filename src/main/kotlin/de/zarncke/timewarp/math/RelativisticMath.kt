@@ -4,7 +4,9 @@ import de.zarncke.timewarp.*
 import java.lang.IllegalArgumentException
 import kotlin.math.*
 
-inline fun sqr(x: Double) = x * x
+fun sqr(x: Double) = x * x
+fun angle(v1: Vector3, v2: Vector3) = acos(v1.dot(v2) / (v1.abs() * v2.abs()))
+
 
 enum class Separation {
     TIMELIKE,
@@ -230,13 +232,34 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
  */
 fun dopplerShift(pEmission: Vector3, vSender: Vector3): Double {
     val vAbs = vSender.abs()   // == beta
+    if (vAbs == 0.0) return 1.0
     val pAbs = pEmission.abs()
-    if (vAbs == 0.0)
-    else return 1.0
     val gamma = gamma(vAbs)
     val cosPhiR = pEmission.dot(vSender) / (pAbs * vAbs)
     return 1 / (gamma * (1 + vAbs * cosPhiR))
 }
+
+
+/**
+ * Relativistic aberration is the relativistic version of aberration of light, including relativistic corrections
+ * that become significant for observers who move with velocities close to the speed of light.
+ * It is described by Einstein's special theory of relativity.
+ * Suppose, in the reference frame of the observer, the source is moving with speed v, at an angle \(\theta_s\),
+ * relative to the vector from the observer to the source at the time when the light is emitted.
+ * Then the following formula ... describes the aberration of the light source, \(\theta_o\), measured by the observer:
+ *
+ * @param theta vector to location of sender at emission in coordinates of receiver frame at emission
+ * @param vSender is the velocity of the sender relative to the receiver at the point of emission as measured in the observer frame
+ * @return reception angle in receiver coordinate system (in rad)
+ */
+fun aberation(theta:Double, vSenderS: Vector3): Double {
+    val vAbs = vSenderS.abs()   // == beta
+    if (vAbs == 0.0) return 0.0
+    val gamma = gamma(vAbs)
+    val cosPhiS = cos(theta)
+    return acos((cosPhiS - vAbs) / (1 - vAbs * cosPhiS))
+}
+
 
 /**
  * Relativistic aberration is the relativistic version of aberration of light, including relativistic corrections
@@ -247,18 +270,19 @@ fun dopplerShift(pEmission: Vector3, vSender: Vector3): Double {
  * Then the following formula ... describes the aberration of the light source, \(\theta_o\), measured by the observer:
  *
  * @param pEmission vector to location of sender at emission in coordinates of receiver frame at reception
- * @param vSender is the velocity of the sender relative to the receiver at the point of emission
- * @return reception angle in receiver coordinate system
+ * @param vSender is the velocity of the sender relative to the receiver at the point of emission as measured in the observer frame
+ * @return reception angle in receiver coordinate system (in rad)
  */
 fun aberation(pEmission: Vector3, vSenderS: Vector3): Double {
     val vAbs = vSenderS.abs()   // == beta
+    if (vAbs == 0.0) return 0.0
     val pAbs = pEmission.abs()
-    if (vAbs == 0.0)
-    else return 1.0
     val gamma = gamma(vAbs)
     val cosPhiS = pEmission.dot(vSenderS) / (pAbs * vAbs)
-    return (cosPhiS - vAbs) / (1 - vAbs * cosPhiS)
+    return acos((cosPhiS - vAbs) / (1 - vAbs * cosPhiS))
 }
+
+
 
 /*
  * Idea

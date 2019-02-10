@@ -1,6 +1,7 @@
 package de.zarncke.timewarp
 
 import de.zarncke.timewarp.math.*
+import org.junit.Assert
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -112,6 +113,31 @@ class TimeWarpTest {
         tw.simulateTo(2.0)
         println(world.events)
         assertEqualsS(State(v.to4(2.0), v, 1.0 + 1.0 / gamma(v)), world.stateInFrame(o1))
+    }
+
+    @Test
+    fun testRelativisticAberationConsistency() {
+        val tw = TimeWarp()
+        val o1 = Obj("Emitter at Origin")
+        tw.addObj(o1, V3_0)
+        val o2 = Obj("Receiver displces in y moving in x direction")
+        val v = EX * 0.5
+        tw.addObj(o2, EY, v)
+        o1.addAction(object : Pulse("signal", 0.0) {
+            override fun strike(world: WorldView, source: Obj, sourcePos: State, receiver: Obj, receiverObjPos: State) {
+                val diff = receiverObjPos.r - sourcePos.r
+                val receptionAngleSender = angle(EX, diff.to3())
+                val receiveDirectionInReceiverFrame = diff.transform(world.origin, world.comovingFrame(receiver))
+                val receptionAngleReceiver = angle(EX, receiveDirectionInReceiverFrame.to3())
+
+                Assert.assertEquals("aberation agrees",receptionAngleReceiver,aberation(receptionAngleSender, v), eps)
+                super.strike(world, source, sourcePos, receiver, receiverObjPos)
+            }
+        })
+
+        tw.simulateTo(10.0)
+        val world = tw.theWorld
+        assertEquals("", world.events[0].name)
     }
 
 }

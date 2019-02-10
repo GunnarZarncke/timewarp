@@ -3,6 +3,7 @@ package de.zarncke.timewarp.math
 import de.zarncke.timewarp.*
 import org.junit.Assert
 import org.junit.Test
+import java.beans.Expression
 import java.lang.IllegalArgumentException
 import kotlin.math.*
 import kotlin.test.assertEquals
@@ -205,6 +206,33 @@ class RelativisticMathTest {
             s4,
             "relativistic acceleration should agree between coordinate and proper time"
         )
+    }
+
+    @Test
+    fun testDoppplerShift() {
+        assertEquals(1.0, dopplerShift(EX, V3_0), "no shift")
+        assertEquals(1.0, dopplerShift(EY, V3_0), "no shift")
+
+        val vx = EX * 0.5
+        assertEquals(1 / (gamma(vx) * (1 + 0.5)), dopplerShift(EX, vx), "receding")
+        assertEquals(1 / (gamma(vx) * (1 - 0.5)), dopplerShift(EX, -vx), "approaching")
+
+        assertEquals(1 / gamma(vx), dopplerShift(EY, vx), "classical transverse")
+
+        val cos45 = cos(PI/4)
+        assertEquals(1 / (gamma(vx) * (1 + 0.5 * cos45)), dopplerShift(EX + EY, vx), "45°")
+    }
+
+    @Test
+    fun testAberation() {
+        assertEquals(0.0, aberation(EX, V3_0), "no aberation")
+        assertEquals(0.0, aberation(EY, V3_0), "no aberation")
+
+        val vx = EX * 0.5
+        assertEquals(0.0, aberation(EX, vx), "receding")
+        assertEquals(0.0, aberation(EX, -vx), "approaching")
+
+        assertEquals(0.0, aberation(EY, vx), "90°")
     }
 
 }

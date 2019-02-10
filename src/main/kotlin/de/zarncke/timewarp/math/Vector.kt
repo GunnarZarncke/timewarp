@@ -30,9 +30,12 @@ data class Vector3(val x: Double, val y: Double, val z: Double) {
 
 data class Vector4(val t: Double, val x: Double, val y: Double, val z: Double) : Comparable<Vector4> {
     fun to3() = Vector3(x, y, z)
+
+    // corresponds to translation - one vector should be a difference vector
     operator fun plus(v2: Vector4) =
         Vector4(t + v2.t, x + v2.x, y + v2.y, z + v2.z)
 
+    // should only be apllied to two place vedtors returning a difference vector
     operator fun minus(v2: Vector4) =
         Vector4(t - v2.t, x - v2.x, y - v2.y, z - v2.z)
 

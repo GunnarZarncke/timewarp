@@ -99,6 +99,14 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
         return MyState(state.generated + added - removed)
     }
 
+    /**
+     * Records a collision by generating an Event (overridable) in
+     * @param world view in which
+     * @param self at
+     * @param selfPos collides with (i.e. is close enough to)
+     * @param targetObj at
+     * @param targetPos in reference frame of the world
+     */
     open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
         world.addEvent(Event("collide", this, selfPos.r, self, selfPos.tau, target, targetPos.tau))
     }
@@ -132,9 +140,8 @@ class Sender(override val name: String, val start: Double, val period: Double, v
  * This works by
  * 1) tracking [Separation.SPACELIKE] separated objects
  * 2) reducing time-stap ([RetrySmallerStep]) when they overshoot
-
  */
-class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
+open class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(start, Double.POSITIVE_INFINITY) {
     class MyState(
         val impossible: Set<Obj> = setOf<Obj>(),
         val tracked: Set<Obj> = setOf<Obj>(),
@@ -156,17 +163,7 @@ class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(st
             when (separation(newObjPos.r, sourcePos.r, eps)) {
                 Separation.TIMELIKE -> impossible.add(newObj)
                 Separation.LIGHTLIKE -> {// immediate hit
-                    world.addEvent(
-                        Event(
-                            name,
-                            this,
-                            newObjPos.r,
-                            obj,
-                            sourcePos.tau,
-                            newObj,
-                            newObjPos.tau
-                        )
-                    )
+                    strike(world, obj, sourcePos, newObj, newObjPos)
                     impossible.add(newObj)
                 }
                 Separation.SPACELIKE -> tracked.add(newObj)
@@ -177,17 +174,7 @@ class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(st
             when (separation(otherPos.r, sourcePos.r, eps)) {
                 Separation.TIMELIKE -> throw RetrySmallerStep() // overshot
                 Separation.LIGHTLIKE -> {
-                    world.addEvent(
-                        Event(
-                            name,
-                            this,
-                            otherPos.r,
-                            obj,
-                            sourcePos.tau,
-                            other,
-                            otherPos.tau
-                        )
-                    )
+                    strike(world, obj, sourcePos, other, otherPos)
                     tracked.remove(other)
                     impossible.add(other)
                 }
@@ -195,5 +182,27 @@ class Pulse(override val name: String, start: Double) : Action<Pulse.MyState>(st
             }
         }
         return MyState(impossible, tracked, sourcePos)
+    }
+
+    /**
+     * Records the light pulse striking by generating an Event (overidable) in
+     * @param world view in which
+     * @param sourceObj at
+     * @param sourcePos sent the light to
+     * @param receiverObj at
+     * @param receiverObjPos in reference frame of the world
+     */
+    open fun strike(world: WorldView, sourceObj: Obj, sourcePos: State, receiverObj: Obj, receiverObjPos: State) {
+        world.addEvent(
+            Event(
+                name,
+                this,
+                receiverObjPos.r,
+                sourceObj,
+                sourcePos.tau,
+                receiverObj,
+                receiverObjPos.tau
+            )
+        )
     }
 }
