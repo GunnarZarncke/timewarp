@@ -125,19 +125,21 @@ class TimeWarpTest {
         tw.addObj(o2, EY, v)
         o1.addAction(object : Pulse("signal", 0.0) {
             override fun strike(world: WorldView, source: Obj, sourcePos: State, receiver: Obj, receiverObjPos: State) {
+                if (source == receiver) return
                 val diff = receiverObjPos.r - sourcePos.r
                 val receptionAngleSender = angle(EX, diff.to3())
-                val receiveDirectionInReceiverFrame = diff.transform(world.origin, world.comovingFrame(receiver))
+                val receiveDirectionInReceiverFrame = sourcePos.r.transform(world.origin, world.comovingFrame(receiver))
                 val receptionAngleReceiver = angle(EX, receiveDirectionInReceiverFrame.to3())
 
-                Assert.assertEquals("aberation agrees",receptionAngleReceiver,aberation(receptionAngleSender, v), eps)
+                Assert.assertEquals("aberation agrees", receptionAngleReceiver, aberation(receptionAngleSender, v), eps)
                 super.strike(world, source, sourcePos, receiver, receiverObjPos)
             }
         })
 
         tw.simulateTo(10.0)
         val world = tw.theWorld
-        assertEquals("", world.events[0].name)
+        assertEquals(2, world.events.size)
+        assertEquals("signal", world.events[1].name)
     }
 
 }

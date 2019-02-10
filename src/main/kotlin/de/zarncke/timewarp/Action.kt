@@ -189,7 +189,7 @@ open class Pulse(override val name: String, start: Double) : Action<Pulse.MyStat
      * @param world view in which
      * @param sourceObj at
      * @param sourcePos sent the light to
-     * @param receiverObj at
+     * @param receiverObj receiving the pulse (which will equal sourceObj at emission) at
      * @param receiverObjPos in reference frame of the world
      */
     open fun strike(world: WorldView, sourceObj: Obj, sourcePos: State, receiverObj: Obj, receiverObjPos: State) {
