@@ -22,11 +22,11 @@ class SimulateSenderAndPulseTest {
 
         val world = tw.theWorld
         println(world.events.joinToString("\n"))
-        assertEquals(V4_0, world.events[0].position)
+        assertEquals(V4_0, world.events[0].receiverState.r)
         assertEquals(pulse, world.events[0].cause)
-        assertEquals(V4_0, world.events[1].position)
+        assertEquals(V4_0, world.events[1].receiverState.r)
         assertEquals("beep", world.events[1].name)
-        assertEquals(EX.to4(1.0), world.events[2].position)
+        assertEquals(EX.to4(1.0), world.events[2].receiverState.r)
         assertEquals("beep", world.events[2].name)
     }
 
@@ -42,9 +42,9 @@ class SimulateSenderAndPulseTest {
         tw.simulateTo(3.0)
 
         val world = tw.theWorld
-        assertEqualsV(V4_0, world.events[1].position)
+        assertEqualsV(V4_0, world.events[1].receiverState.r)
         assertEquals("beep", world.events[1].name)
-        assertEqualsV(EX.to4(1.0), world.events[2].position)
+        assertEqualsV(EX.to4(1.0), world.events[2].receiverState.r)
         assertEquals("beep", world.events[2].name)
     }
 
@@ -64,9 +64,9 @@ class SimulateSenderAndPulseTest {
         val world = tw.theWorld
         println(world.events.joinToString("\n"))
 
-        assertEqualsV(V4_0, world.events[1].position)
+        assertEqualsV(V4_0, world.events[1].receiverState.r)
         assertEquals("beep", world.events[1].name)
-        assertEqualsV((EX*(2.0/3)).to4(2.0/3), world.events[2].position)
+        assertEqualsV((EX*(2.0/3)).to4(2.0/3), world.events[2].receiverState.r)
         assertEquals("beep", world.events[2].name)
     }
 
@@ -84,7 +84,7 @@ class SimulateSenderAndPulseTest {
         println(world.events.joinToString("\n"))
 
         assertEquals("Action", world.events[0].name, "start sending")
-        assertEqualsV(V4_0, world.events[0].position )
+        assertEqualsV(V4_0, world.events[0].receiverState.r )
         assertTrue(world.events[0].cause is Sender)
 
 
@@ -93,9 +93,9 @@ class SimulateSenderAndPulseTest {
         assertEquals("pulse:beep-1", pulses[1].name)
         assertEquals("pulse:beep-2", pulses[2].name)
         assertEquals(3, pulses.size)
-        assertEquals(EX.to4(1.0), pulses[0].position)
-        assertEquals(EX.to4(2.0), pulses[1].position)
-        assertEquals(EX.to4(3.0), pulses[2].position)
+        assertEquals(EX.to4(1.0), pulses[0].receiverState.r)
+        assertEquals(EX.to4(2.0), pulses[1].receiverState.r)
+        assertEquals(EX.to4(3.0), pulses[2].receiverState.r)
     }
 
 

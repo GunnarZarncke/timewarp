@@ -103,12 +103,12 @@ open class DetectCollision(tau: Double, until: Double = Double.POSITIVE_INFINITY
      * Records a collision by generating an Event (overridable) in
      * @param world view in which
      * @param self at
-     * @param selfPos collides with (i.e. is close enough to)
+     * @param selfState collides with (i.e. is close enough to)
      * @param targetObj at
-     * @param targetPos in reference frame of the world
+     * @param targetState in reference frame of the world
      */
-    open fun collide(world: WorldView, self: Obj, selfPos: State, target: Obj, targetPos: State) {
-        world.addEvent(Event("collide", this, selfPos.r, self, selfPos.tau, target, targetPos.tau))
+    open fun collide(world: WorldView, self: Obj, selfState: State, target: Obj, targetState: State) {
+        world.addEvent(Event("collide", this, self, selfState, target, targetState))
     }
 }
 
@@ -192,17 +192,7 @@ open class Pulse(override val name: String, start: Double) : Action<Pulse.MyStat
      * @param receiverObj receiving the pulse (which will equal sourceObj at emission) at
      * @param receiverObjPos in reference frame of the world
      */
-    open fun strike(world: WorldView, sourceObj: Obj, sourcePos: State, receiverObj: Obj, receiverObjPos: State) {
-        world.addEvent(
-            Event(
-                name,
-                this,
-                receiverObjPos.r,
-                sourceObj,
-                sourcePos.tau,
-                receiverObj,
-                receiverObjPos.tau
-            )
-        )
+    open fun strike(world: WorldView, source: Obj, sourceState: State, receiver: Obj, receiverState: State) {
+        world.addEvent(Event(name, this, source, sourceState, receiver, receiverState))
     }
 }

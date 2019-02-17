@@ -104,18 +104,18 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
         time: Double? = null,
         name: String? = null,
         nameRegex: Regex? = null,
-        tau: Double? = null,
+        tauReceiver: Double? = null,
         receiver: Obj? = null,
         sender: Obj? = null,
         causeClass: Class<*>? = null
     ) = theWorld.events.filter {
-        if (place != null && place != it.position.to3()) false
-        else if (time != null && time != it.position.t) false
+        if (place != null && place != it.senderState.r.to3()) false
+        else if (time != null && time != it.senderState.r.t) false
         else if (name != null && name != it.name) false
         else if (nameRegex != null && !it.name.matches(nameRegex)) false
         else if (sender != null && sender != it.sender) false
         else if (receiver != null && receiver != it.receiver) false
-        else if (tau != null && abs(tau - it.tauReceiver) > eps) false
+        else if (tauReceiver != null && abs(tauReceiver - it.receiverState.tau) > eps) false
         else if (causeClass != null && !causeClass.isInstance(it.cause)) false
         else true
     }
@@ -145,11 +145,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         Event(
                             "Action-end",
                             activity.action,
-                            activity.state.r,
                             activity.obj,
-                            activity.state.tau,
+                            activity.state,
                             obj,
-                            tau
+                            world.stateInFrame(obj)
                         )
                     )
             }
@@ -321,11 +320,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         Event(
                             "Action",
                             earliest.action,
-                            earliest.state.r,
                             earliest.obj,
-                            earliest.state.tau,
+                            earliest.state,
                             earliest.obj,
-                            earliest.state.tau
+                            earliest.state
                         )
                     )
             }
@@ -383,11 +381,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                         Event(
                             "Motion",
                             entry.value,
-                            state.r,
                             obj,
-                            state.tau,
+                            state,
                             obj,
-                            state.tau
+                            state
                         )
                     )
             }
@@ -397,11 +394,10 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
                     Event(
                         "Motion-end",
                         entry.value,
-                        state.r,
                         obj,
-                        state.tau,
+                        state,
                         obj,
-                        state.tau
+                        state
                     )
                 )
 
@@ -436,7 +432,7 @@ class TimeWarp(private val logger: Logger = Logger.getLogger(TimeWarp::javaClass
 }
 
 // TODO move into context object?
-val eps = 0.00001
+val eps = 0.0000001
 val precision = eps
 
 /* Idea:

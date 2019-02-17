@@ -79,9 +79,9 @@ class SimulateMotionTest {
         println(world.events.joinToString(",\n"))
 
         val gamma = gamma(0.5)
-        assertEqualsV((v * gamma).to4(gamma), world.events[0].position)
-        assertEqualsV((v * gamma).to4(gamma + 1), world.events[1].position)
-        assertEqualsV(V3_0.to4(2 * gamma + 1), world.events[2].position)
+        assertEqualsV((v * gamma).to4(gamma), world.events[0].receiverState.r)
+        assertEqualsV((v * gamma).to4(gamma + 1), world.events[1].receiverState.r)
+        assertEqualsV(V3_0.to4(2 * gamma + 1), world.events[2].receiverState.r)
         assertEqualsS(State(V3_0.to4(4.0), V3_0, 4.0 - (2 * gamma - 2)), world.stateInFrame(o1))
     }
 
@@ -108,7 +108,7 @@ class SimulateMotionTest {
         assertStartsWith("Motion-end", world.events[1].name)
         assertEquals(acceleration, world.events[1].cause)
         val s2 = relativisticAcceleration(a, 1.0)
-        assertEqualsV(s2.r, world.events[1].position, "expect an event at end of acceleration")
+        assertEqualsV(s2.r, world.events[1].receiverState.r, "expect an event at end of acceleration")
         assertEquals(2.0, world.stateInFrame(o1).r.t)
         // we don't check the inertial movement after the acceleration here
     }
@@ -131,13 +131,13 @@ class SimulateMotionTest {
         println(world.events.joinToString(",\n"))
 
         val s = relativisticAcceleration(a, 1.0)
-        assertEqualsV(V4_0, world.events[0].position)
-        assertEqualsV(s.r, world.events[1].position)
-        assertEquals(world.events[1].position, world.events[2].position)
-        assertEqualsV((s.r.to3() * 2.0).to4(2 * s.r.t), world.events[3].position)
-        assertEquals(world.events[3].position, world.events[4].position)
-        assertEquals(world.events[5].position, world.events[6].position)
-        assertEqualsV(V3_0.to4(4 * s.r.t), world.events[7].position)
+        assertEqualsV(V4_0, world.events[0].receiverState.r)
+        assertEqualsV(s.r, world.events[1].receiverState.r)
+        assertEquals(world.events[1].receiverState.r, world.events[2].receiverState.r)
+        assertEqualsV((s.r.to3() * 2.0).to4(2 * s.r.t), world.events[3].receiverState.r)
+        assertEquals(world.events[3].receiverState.r, world.events[4].receiverState.r)
+        assertEquals(world.events[5].receiverState.r, world.events[6].receiverState.r)
+        assertEqualsV(V3_0.to4(4 * s.r.t), world.events[7].receiverState.r)
         assertEqualsS(State(V3_0.to4(5.0), V3_0, 5.0 - 4 * (s.r.t - s.tau)), world.stateInFrame(o1))
     }
 

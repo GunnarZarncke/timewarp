@@ -1,11 +1,10 @@
 package de.zarncke.timewarp
 
-import de.zarncke.timewarp.math.EX
-import de.zarncke.timewarp.math.EY
-import de.zarncke.timewarp.math.V3_0
-import de.zarncke.timewarp.math.Vector3
+import de.zarncke.timewarp.math.*
+import org.junit.Assert
 import org.junit.Test
 import java.lang.Math.abs
+import kotlin.math.PI
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -32,7 +31,7 @@ class ParadoxonTest {
         assertEquals("pulse:A-0", events[0].name)
         // pulses are received later and later
         for (i in 0..events.size - 2)
-            assertTrue(events[i + 1].tauReceiver > events[i].tauReceiver + 1)
+            assertTrue(events[i + 1].receiverState.tau > events[i].receiverState.tau + 1)
     }
 
     @Test
@@ -48,7 +47,7 @@ class ParadoxonTest {
         o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a))
         tw.addObj(o2, EY)
 
-        val world = tw.simulateTo(100.0)
+        val world = tw.simulateTo(20.0)
         println(world.stateInFrame(o1))
 
         val events = tw.events(receiver = o2, sender = o1)
@@ -57,9 +56,62 @@ class ParadoxonTest {
         assertEquals("pulse:A-0", events[0].name)
         // pulses are received at equal intervals
         for (i in 0..events.size - 2) {
-            val delta = events[i + 1].tauReceiver - (events[i].tauReceiver + 1)
-            println("delta_$i = $delta")
-            assertTrue(abs(delta) < eps*5, "$delta>>$eps")
+            events[i + 1].apply {
+                val delta = receiverState.tau - (events[i].receiverState.tau + 1)
+                Assert.assertEquals(
+                    "delta tau $delta>>$eps",
+                    receiverState.tau,
+                    events[i].receiverState.tau + 1,
+                    eps * 5
+                )
+                val comovingFrame = receiverState.toMCRF()
+                val deltaVinFrame = senderState.v.transformVelocity(world.origin, comovingFrame)
+                val vectorToEmitter = senderState.r
+                val vectorToEmitterInFrame = vectorToEmitter.transform(world.origin, comovingFrame)
+                val doppler = dopplerShift(vectorToEmitterInFrame.to3(), deltaVinFrame)
+                Assert.assertEquals("no doppler shift expected", doppler, 1.0, eps)
+            }
+        }
+    }
+
+    @Test
+    fun testSimulateRocketClocksSkewed() {
+        val tw = TimeWarp()
+        val o1 = Obj("RocketBottom")
+        val a1 = EX * 0.1
+        val a2 = a1.rotateZ(-1.deg2Rad())
+        o1.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a1))
+        o1.addAction(Sender("A", 0.0, 1.0))
+        tw.addObj(o1, V3_0)
+
+        val o2 = Obj("RocketTop")
+        o2.addMotion(LongitudinalAcceleration(0.0, Double.POSITIVE_INFINITY, a2))
+        tw.addObj(o2, EY)
+
+        val world = tw.simulateTo(20.0)
+        println(world.stateInFrame(o1))
+
+        val events = tw.events(receiver = o2, sender = o1)
+        println(events.joinToString("\n"))
+
+        assertEquals("pulse:A-0", events[0].name)
+        // pulses are received at equal intervals
+        for (i in 0..events.size - 2) {
+            events[i + 1].apply {
+                val delta = receiverState.tau - (events[i].receiverState.tau + 1)
+                Assert.assertEquals(
+                    "delta tau $delta>>$eps",
+                    receiverState.tau,
+                    events[i].receiverState.tau + 1,
+                    eps * 5
+                )
+                val comovingFrame = receiverState.toMCRF()
+                val deltaVinFrame = senderState.v.transformVelocity(world.origin, comovingFrame)
+                val vectorToEmitter = senderState.r
+                val vectorToEmitterInFrame = vectorToEmitter.transform(world.origin, comovingFrame)
+                val doppler = dopplerShift(vectorToEmitterInFrame.to3(), deltaVinFrame)
+                Assert.assertEquals("no doppler shift expected", doppler, 1.0, eps)
+            }
         }
     }
 
@@ -88,8 +140,9 @@ class ParadoxonTest {
         println(world.events.joinToString("\n"))
 
         val event = world.events[0]
+        // TODO we need to find the collision point
         assertEquals("collide", event.name) // TODO collision doesn't yet support arbitrary collition points
-        assertEqualsV(EX.to4(0.0), event.position)
+        assertEqualsV(EX.to4(0.0), event.senderState.r)
     }
 
     @Test
@@ -127,7 +180,7 @@ class AddDisplaced(tau: Double, private val newObj: Obj, private val ds: Vector3
     override fun init() {}
 
     override fun act(world: WorldView, obj: Obj, tau: Double, t: Unit) {
-        val mcrf = world.comovingFrame(obj)
+        val mcrf = world.getMCRF(obj)
         val state = world.stateInFrame(obj, mcrf).copy(r = ds.to4(0.0)).transform(mcrf, world.origin)
         world.addOrSetObject(newObj, state)
     }

@@ -230,7 +230,7 @@ fun WorldView.cloneObj(
     val state = stateInFrame(obj)
     val tauClone = tau ?: state.tau
     addOrSetObject(clone, State(state.r, state.v + vRelative, tauClone))
-    addEvent(Event("Clone", obj, state.r, obj, state.tau, clone, tauClone))
+    addEvent(Event("Clone", obj, obj, state, clone, state.copy(tau=tauClone)))
     return clone
 }
 
@@ -245,7 +245,7 @@ fun WorldView.addObj(obj: Obj, r: Vector4 = V4_0, v: Vector3 = V3_0, tau: Double
 }
 
 /**
- * @return a frame coming with the given object at the current time
+ * @return a frame momentarily coming with the given object at the current time
  */
-fun WorldView.comovingFrame(obj: Obj) = this.stateInFrame(obj).let { Frame(it.r, it.v) }
+fun WorldView.getMCRF(obj: Obj) = this.stateInFrame(obj).let { Frame(it.r, it.v) }
 

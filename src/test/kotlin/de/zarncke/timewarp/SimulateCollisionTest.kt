@@ -21,9 +21,9 @@ class SimulateCollisionTest {
 
         val world = tw.theWorld
         println(world.events.joinToString("\n"))
-        assertEquals(V4_0, world.events[0].position)
+        assertEquals(V4_0, world.events[0].receiverState.r)
         assertStartsWith("Action", world.events[0].name)
-        assertEquals(V3_0.to4(2.0), world.events[1].position)
+        assertEquals(V3_0.to4(2.0), world.events[1].receiverState.r)
         assertEquals("collide", world.events[1].name)
     }
 

@@ -110,6 +110,7 @@ class TimeWarpTest {
         o1.addMotion(AbruptVelocityChange(1.0, v))
         o1.addMotion(Inertial(1.0, 2.0))
 
+        // TODO the problem is that the abrupt motions is executed more than once if there is a motion
         tw.simulateTo(2.0)
         println(world.events)
         assertEqualsS(State(v.to4(2.0), v, 1.0 + 1.0 / gamma(v)), world.stateInFrame(o1))
@@ -128,7 +129,7 @@ class TimeWarpTest {
                 if (source == receiver) return
                 val diff = receiverObjPos.r - sourcePos.r
                 val receptionAngleSender = angle(EX, diff.to3())
-                val receiveDirectionInReceiverFrame = sourcePos.r.transform(world.origin, world.comovingFrame(receiver))
+                val receiveDirectionInReceiverFrame = sourcePos.r.transform(world.origin, world.getMCRF(receiver))
                 val receptionAngleReceiver = angle(EX, receiveDirectionInReceiverFrame.to3())
 
                 Assert.assertEquals("aberation agrees", receptionAngleReceiver, aberation(receptionAngleSender, v), eps)

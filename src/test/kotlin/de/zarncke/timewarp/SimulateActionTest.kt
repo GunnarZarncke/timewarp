@@ -41,7 +41,7 @@ class SimulateActionTest {
 
         tw.simulateTo(1.0)
         val world = tw.theWorld
-        assertEquals((EX * 0.25 * gamma(v)).to4(0.5 * gamma(v)), world.events[0].position)
+        assertEquals((EX * 0.25 * gamma(v)).to4(0.5 * gamma(v)), world.events[0].receiverState.r)
         assertEquals(marker, world.events[0].cause)
         assertEqualsS(State(v.to4(1.0), v, 1 / gamma(v)), world.stateInFrame(o1))
     }
@@ -65,14 +65,14 @@ class SimulateActionTest {
 
         tw.simulateTo(1.0)
         // events at t=0.5
-        assertEquals(V3_0.to4(0.5), world.events[0].position)
+        assertEquals(V3_0.to4(0.5), world.events[0].receiverState.r)
         assertEquals("Clone", world.events[1].name)
         assertEquals(o2, world.events[1].receiver)
-        assertEquals(V3_0.to4(0.5), world.events[1].position)
+        assertEquals(V3_0.to4(0.5), world.events[1].receiverState.r)
 
         assertEquals(marker, world.events[2].cause)
-        assertEquals((v * 0.25 * gamma(v)).to4(0.5 + 0.25 * gamma(v)), world.events[2].position)
-        assertEquals(0.25, world.events[2].tauReceiver)
+        assertEquals((v * 0.25 * gamma(v)).to4(0.5 + 0.25 * gamma(v)), world.events[2].receiverState.r)
+        assertEquals(0.25, world.events[2].receiverState.tau)
         // state at t=1.0
         assertEqualsS(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(o1))
         assertEqualsS(State((v * 0.5).to4(1.0), v, 0.5 / gamma(v)), world.stateInFrame(o2!!))
@@ -90,7 +90,7 @@ class SimulateActionTest {
         val world = tw.simulateTo(1.0)
         assertEqualsS(State(V3_0.to4(1.0), V3_0, 1.0), world.stateInFrame(left))
         assertEqualsS(State(EX.to4(1.0), V3_0, 1.0), world.stateInFrame(right))
-        assertEqualsV(V3_0.to4(0.5), tw.events(causeClass = Marker::class.java)[0].position)
+        assertEqualsV(V3_0.to4(0.5), tw.events(causeClass = Marker::class.java)[0].receiverState.r)
     }
 
     @Test
@@ -110,8 +110,8 @@ class SimulateActionTest {
         val r = lorentzTransformInv(v, EX.to4(0.0))
 
         val markers = tw.events(causeClass = Marker::class.java)
-        assertEqualsV(V3_0.to4(0.0), markers[0].position)
-        assertEqualsV(r, markers[1].position)
+        assertEqualsV(V3_0.to4(0.0), markers[0].receiverState.r)
+        assertEqualsV(r, markers[1].receiverState.r)
         assertEqualsS(State(EX.to4(2.0), v, 2.0 / gamma(v)), world.stateInFrame(left))
         assertEqualsS(
             State((r.to3() + v * (2 - r.t)).to4(2.0), v, (2.0 - r.t) / gamma(v)),
