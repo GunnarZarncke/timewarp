@@ -2,6 +2,7 @@ package de.zarncke.timewarp.math
 
 import de.zarncke.timewarp.*
 import org.junit.Assert
+import org.junit.Assert.*
 import org.junit.Test
 import java.beans.Expression
 import java.lang.IllegalArgumentException
@@ -159,7 +160,7 @@ class RelativisticMathTest {
         val v = 0.5
         val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EY * v)) // note EX and EY orthogonal directions
         assertEquals(1 / a * asinh(a * t / gamma(v)), s.tau)
-        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+        assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
     }
 
     @Test
@@ -170,7 +171,7 @@ class RelativisticMathTest {
         val atg = a * t / gamma(v)
         val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, EX * v))  // note EX in both cases
         assertEquals(1 / a * asinh((v * (-sqrt(atg * atg + 2 * v * atg + 1) + 1) + atg) / (1 - v * v)), s.tau)
-        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+        assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
     }
 
     @Test
@@ -183,7 +184,7 @@ class RelativisticMathTest {
         val w = EX.dot(vv)
         val s = relativisticCoordAcceleration(EX * a, t, Frame(V4_0, vv))
         assertEquals(1 / a * asinh((w * (-sqrt(atg * atg + 2 * w * atg + 1) + 1) + atg) / (1 - w * w)), s.tau)
-        Assert.assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
+        assertEquals("tau should transform back to t", 1.0, s.r.t, eps)
     }
 
 
@@ -230,9 +231,11 @@ class RelativisticMathTest {
 
         val vx = EX * 0.5
         assertEquals(0.0, aberation(EX, vx), "receding")
-        assertEquals(0.0, aberation(EX, -vx), "approaching")
+        assertEquals(PI, aberation(EX, -vx), "approaching")
 
-        assertEquals(0.0, aberation(EY, vx), "90°")
+        assertEquals(acos(0 - 0.5), aberation(EY, vx), "90° at emission")
+
+        Assert.assertEquals("45°", acos((cos(PI/4) - 0.5) / (1 - 0.5*cos(PI/4))), aberation(EX+EY, vx), eps)
     }
 
 }

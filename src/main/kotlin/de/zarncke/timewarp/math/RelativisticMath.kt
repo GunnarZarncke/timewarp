@@ -219,7 +219,7 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
 }
 
 /**
- * Doppler shift for motion in an arbitrary direction
+ * Doppler shift for motion in an arbitrary direction:
  * ...the Relativistic longitudinal Doppler effect can be extended in a straightforward fashion to calculate the
  * Doppler shift for the case where the inertial motions of the source and receiver are at any specified angle.
  * ...this presents the scenario from the frame of the receiver, with the source moving at speed
@@ -227,7 +227,7 @@ fun relativisticCoordAcceleration(a0: Vector3, t: Double, frame: Frame): State {
  * The radial component of the source's motion along the line of sight is equal to
  * $$v\cos{\theta _r}$$
  * @param pEmission vector to location of sender at emission in coordinates of receiver frame at reception
- * @param vSender is the velocity of the sender relative to the receiver at the point of emission in sender coordinates
+ * @param vSender is the velocity of the sender relative to the receiver at the point of emission in receiver coordinates
  * @return doppler shift (multiple of frequency seen by the receiver compared to sender)
  */
 fun dopplerShift(pEmission: Vector3, vSender: Vector3): Double {
@@ -268,6 +268,7 @@ fun aberation(theta:Double, vSenderS: Vector3): Double {
  * Suppose, in the reference frame of the observer, the source is moving with speed v, at an angle \(\theta_s\),
  * relative to the vector from the observer to the source at the time when the light is emitted.
  * Then the following formula ... describes the aberration of the light source, \(\theta_o\), measured by the observer:
+ * $$\cos \theta_o=\frac{\cos \theta_s-\frac{v}{c}}{1-\frac{v}{c} \cos \theta_s}$$
  *
  * @param pEmission vector to location of sender at emission in coordinates of receiver frame at reception
  * @param vSender is the velocity of the sender relative to the receiver at the point of emission as measured in the observer frame
