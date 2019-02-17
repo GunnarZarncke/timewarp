@@ -5,6 +5,7 @@ import de.zarncke.timewarp.math.*
 import koma.mat
 import koma.matrix.Matrix
 import org.junit.Assert
+import org.junit.Ignore
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -14,6 +15,20 @@ class VectorTest {
         assertEqualsV(EX, EY.rotate(EZ, 90.deg2Rad()))
     }
 
+    @Test
+    fun testVectorRotationComplex() {
+        val someVector = EX + EY * 2.0 + EZ * 3.0
+        val someOtherVector = EX * 2.0 + EY * 3.0 + EZ * 4.0
+
+        var fiveTimesRotated = someVector
+        for (i in 1..5) fiveTimesRotated = fiveTimesRotated.rotate(someOtherVector, (360 / 5).deg2Rad())
+        assertEqualsV(someVector, fiveTimesRotated)
+    }
+
+    /**
+     * This just verifies that our matrix operations do the same thing as Koma's do.
+     */
+    @Ignore
     @Test
     fun testCompareKoma() {
 
@@ -30,16 +45,6 @@ class VectorTest {
 
         val ktres = mat[tres.x, tres.y, tres.z]
         assertEquals(kres, ktres)
-    }
-
-    @Test
-    fun testVectorRotationComplex() {
-        val someVector = EX + EY * 2.0 + EZ * 3.0
-        val someOtherVector = EX * 2.0 + EY * 3.0 + EZ * 4.0
-
-        var fiveTimesRotated = someVector
-        for (i in 1..5) fiveTimesRotated = fiveTimesRotated.rotate(someOtherVector, (360 / 5).deg2Rad())
-        assertEqualsV(someVector, fiveTimesRotated)
     }
 
 }
